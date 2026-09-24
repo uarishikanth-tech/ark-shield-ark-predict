@@ -1,0 +1,74 @@
+{
+ "testSeeds": [
+  201,
+  202
+ ],
+ "simSecondsPerSeed": 3600,
+ "secondAccuracy": 0.892,
+ "faultTypeAccuracy": 0.918,
+ "faultsTested": 61,
+ "healthySecondsFlagged": 0.0252,
+ "perClass": {
+  "drift": {
+   "faults": 10,
+   "correct": 9
+  },
+  "dropout": {
+   "faults": 11,
+   "correct": 11
+  },
+  "stuck": {
+   "faults": 8,
+   "correct": 8
+  },
+  "bearing_wear": {
+   "faults": 6,
+   "correct": 6
+  },
+  "hydraulic_leak": {
+   "faults": 5,
+   "correct": 5
+  },
+  "battery_fade": {
+   "faults": 6,
+   "correct": 4
+  },
+  "oscillation": {
+   "faults": 10,
+   "correct": 8
+  },
+  "overload": {
+   "faults": 5,
+   "correct": 5
+  }
+ },
+ "confusion": {
+  "drift": {
+   "stuck": 1,
+   "drift": 9
+  },
+  "dropout": {
+   "dropout": 11
+  },
+  "stuck": {
+   "stuck": 8
+  },
+  "bearing_wear": {
+   "bearing_wear": 6
+  },
+  "hydraulic_leak": {
+   "hydraulic_leak": 5
+  },
+  "battery_fade": {
+   "battery_fade": 4,
+   "stuck": 2
+  },
+  "oscillation": {
+   "oscillation": 8,
+   "overload": 2
+  },
+  "overload": {
+   "overload": 5
+  }
+ }
+}
