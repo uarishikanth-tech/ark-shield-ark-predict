@@ -98,6 +98,13 @@ def main() -> int:
         return f"learned offset {r['learnedOffset']} for {r['type']} / {r['sensor']}"
     check("technician feedback", feedback)
 
+    def bench():
+        b = call(API + "/benchmark")
+        rep = call(API + "/benchmark/replay?experiment=" + b["experiments"][0])
+        best = max(b["rows"], key=lambda r: r["f1"])
+        assert rep["sensors"] and rep["fault"]
+        return f"{b['dataset']['files']} real SKAB experiments, {len(b['rows'])} result rows, best F1 {best['f1']}"
+    check("ML Lab benchmark (real SKAB data)", bench)
     check("dashboard page (/)", lambda: "ARK Predict" in call(BASE + "/", raw=True) and "html ok")
 
     width = max(len(n) for n, _, _ in results)
