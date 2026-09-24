@@ -8,6 +8,23 @@ It replaces the old "Predictive model not trained" placeholder with a working mo
 
 ---
 
+## New in Review 3: ARK Predict v2 (the fault classifier)
+
+v1 decides **whether** a truck looks wrong. v2 adds a **supervised model that says what is wrong**, live, every second:
+
+| | |
+|---|---|
+| Model | Gradient boosting (`HistGradientBoostingClassifier`), 9 classes: normal + 8 fault types (drift, dropout, stuck, bearing wear, hydraulic leak, battery fade, oscillation, overload) |
+| Input | 57 features from the last 60 s of each truck's residuals (z now, rolling mean/std over 10/30/60 s, 30-s change, missing share, frozen time, load) — `classifier.py` |
+| Training | labelled faults injected into the simulator (3 fleets × 1.5 h); **tested on 2 fleets it never saw** |
+| Result | **right fault type for 92 % of 61 unseen faults**; live on the stream it names the right fault for **87 %** of alerted faults |
+| Live rule | names the fault on incidents the detectors opened (never opens one itself → adds **0 false alarms**); a confident *bearing wear* / *hydraulic leak* goes straight to **URGENT** |
+| Learning | every technician verdict saves the incident's seconds as a labelled example (**false alarm** → normal; otherwise the fault type they pick); **Retrain** refits the model with those labels (weighted ×3) |
+
+Live stream, same fleet and faults (`python -m app.services.anomaly.evaluate` → `compare_v2`, 2 simulated hours): v1 and v2 both detect 96.5 % of faults with 0 false alarms and 100 % of URGENT faults paged; v2 **names 87 % of faults correctly**, sends **92 alerts instead of 102** (a dangerous fault is paged URGENT at once instead of MONITOR-then-escalate) and pages URGENT faults a little sooner (median 112 s vs 117 s).
+
+Everything — forklift dataset, classifier, live comparison, forklift benchmark, charts, tests, report — is rebuilt by **one command: `python scripts/review3.py`** → [FINAL_REPORT.md](./FINAL_REPORT.md).
+
 ## How this meets the problem statement
 
 | HTH-ML-10 asks for | What ARK Predict does | Where |
@@ -223,6 +240,11 @@ app/services/anomaly/
   skab.py         SKAB benchmark: fixed limit vs 10 models (PCA, IF, LOF, OCSVM, 3 autoencoders, ensemble, supervised, hybrid)
   deepnp.py       numpy deep learning: Conv-1D + LSTM autoencoders with hand-written backprop (gradient-checked)
   results/skab_results.json   precomputed benchmark results + replays for the ML Lab page
+  classifier.py   ARK Predict v2: 57-feature tracker + supervised fault classifier (train / evaluate / retrain)
+  forklift_dataset.py   labelled forklift runs in SKAB format (data/forklift/)
+  results/fault_classifier.pkl.gz + fault_classifier_data.npz   the trained classifier + its training data
+  results/forklift_results.json   forklift benchmark for the ML Lab page
+scripts/review3.py   one command that rebuilds every result, chart and FINAL_REPORT.md
 app/routers/anomaly.py   REST API
 tests/test_anomaly.py    14 tests
 scripts/check_ark_predict.py   demo-day smoke test (run against the live server)

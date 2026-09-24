@@ -185,8 +185,11 @@ payload notes: [ANOMALY.md](./ANOMALY.md#api-apianomaly).
 - `GET /alerts?limit=` — routed notifications · `GET /feed?limit=` — every routing decision
 - `GET /incidents?status=open|all` · `GET /incidents/{id}`
 - `GET /summary` · `GET /report.md` — end-of-run report + evaluation vs ground truth
-- `GET /benchmark` — every model's results on the real SKAB benchmark + published leaderboard (from `app/services/anomaly/results/skab_results.json`)
-- `GET /benchmark/replay?experiment=valve1/1` — one real SKAB experiment: sensor traces, labelled fault, alarm times of the fixed limit and ARK v2 (URGENT / MONITOR)
+- `GET /model` — ARK Predict v2 fault classifier: version, training rows, accuracy on unseen runs, technician labels waiting
+- `POST /model/retrain` — refit the classifier with the technician-labelled windows (≈30–60 s)
+- `POST /feedback {incidentId, label, faultType?}` — `faultType` (e.g. `hydraulic_leak`) tells the classifier what it actually was
+- `GET /benchmark?dataset=skab|forklift` — every model's results on the real SKAB benchmark (+ published leaderboard) or on the labelled forklift runs (from `app/services/anomaly/results/skab_results.json`)
+- `GET /benchmark/replay?dataset=skab&experiment=valve1/1` — one real SKAB experiment: sensor traces, labelled fault, alarm times of the fixed limit and ARK v2 (URGENT / MONITOR)
 - `POST /start` · `/pause` · `/reset {seed?}` · `/speed {speed}` · `/fault-rate {ratePerMin}`
 - `POST /inject {scenario, machineId?, sensor?, durationS?, magnitude?}` — DEMO fault injection
 - `POST /feedback {incidentId, label}` — technician verdict (`right_call` · `too_high` · `too_low` · `false_alarm`); `GET /feedback` — what has been learned

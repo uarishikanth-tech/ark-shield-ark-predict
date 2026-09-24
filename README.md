@@ -79,6 +79,11 @@ python tests/test_anomaly.py                 # tests
 
 Full write-up, results, demo script and API: **[ANOMALY.md](./ANOMALY.md)**.
 
+**ARK Predict v2 (Review 3):** a supervised fault classifier now runs live on the stream and names *what* is
+wrong (right fault type for 92 % of faults it never saw), fast-tracks bearing wear / hydraulic leaks to URGENT,
+and retrains from technician verdicts. Every result is rebuilt by **`python scripts/review3.py`** →
+**[FINAL_REPORT.md](./FINAL_REPORT.md)**.
+
 **Tested on real industrial data:** on the SKAB benchmark (34 real pump experiments, official leaderboard
 protocol) the fixed 3σ limit flags 44 % of normal time and fires 95 false alarms per hour. ARK Predict v2
 (supervised model for known faults + deep-learning autoencoders for new ones) catches all 34 faults with F1 0.81,
