@@ -1,0 +1,33 @@
+# ARK Shield server — Python (FastAPI) dependencies
+# Install with: pip install -r requirements.txt
+
+# Web framework
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30,<1.0
+
+# Database
+sqlalchemy[asyncio]>=2.0.35,<3.0
+asyncpg>=0.29,<1.0
+# psycopg2-binary is used only by Alembic (migrations run synchronously);
+# the running app uses asyncpg via DATABASE_URL.
+psycopg2-binary>=2.9,<3.0
+alembic>=1.13,<2.0
+
+# Validation / settings
+pydantic>=2.8,<3.0
+pydantic-settings>=2.4,<3.0
+email-validator>=2.2,<3.0
+
+# Auth
+pyjwt>=2.9,<3.0
+bcrypt>=4.2,<5.0
+
+# Real-time (Socket.IO protocol — compatible with any socket.io-client)
+python-socketio>=5.11,<6.0
+
+# Env loading
+python-dotenv>=1.0,<2.0
+
+# ARK Predict — streaming anomaly detection (ANOMALY.md)
+numpy>=1.26
+scikit-learn>=1.5   # optional: without it the ML layer falls back to a numpy Mahalanobis model
