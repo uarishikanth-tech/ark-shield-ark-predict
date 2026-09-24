@@ -32,6 +32,11 @@ from .config import MACHINES, ROUTES, SENSOR_BY_KEY, TIER_RANK, EngineConfig
 from .rootcause import hint_for
 from .feedback import FeedbackLearner
 from .severity import PROCESS_TYPES, score_incident, tier_for
+from .classifier import FAULT_LABEL
+
+# ARK Predict v2: known faults that are dangerous enough to page someone as soon as the
+# supervised classifier is confident it recognises them
+DANGEROUS_FAULTS = {"bearing_wear", "hydraulic_leak"}
 
 ASSET = dict(MACHINES)
 
@@ -66,6 +71,7 @@ class Incident:
     sensor_hint: str | None = None   # multivariate incidents: sensor the ML model points at
     detected_t: int | None = None   # when the pipeline first knew (opened_t may be back-dated, e.g. burst start)
     feedback: str | None = None      # technician label, if any (feedback.py)
+    diagnosis: dict | None = None    # ARK Predict v2: what the supervised classifier says it is
 
     def __post_init__(self):
         if self.detected_t is None:
@@ -93,7 +99,7 @@ class Incident:
             "notifiedTier": self.notified_tier, "groupId": self.group_id,
             "components": self.components, "explanation": self.explanation,
             "rootCause": self.root_cause, "info": self.info, "tierHistory": self.tier_history[-6:],
-            "feedback": self.feedback,
+            "feedback": self.feedback, "mlDiagnosis": self.diagnosis,
         }
 
 
@@ -113,6 +119,7 @@ class AlertRouter:
         self._ml_hist: dict[str, deque] = {}
         self.feedback = FeedbackLearner(cfg.severity.monitor_at, cfg.severity.urgent_at)
         self.resolved_notified: list = []     # incidents a human was told about that just closed (for review)
+        self._votes: dict = {}                # incident id -> {fault: (confirmed seconds, sum of confidence)}
         self.stats = defaultdict(int)
 
     # ------------------------------------------------------------------
@@ -251,6 +258,7 @@ class AlertRouter:
                                 and i.type == inc.type})
             inc.severity, inc.components, inc.explanation = score_incident(
                 inc, cfg.severity, spread_n, inc.ml_peak, self.feedback.offset(inc))
+            self._apply_diagnosis(inc, (ml_info or {}).get(inc.machine, {}).get("diag"))
             new_tier = tier_for(inc.severity, cfg.severity)
             if new_tier != inc.tier:
                 inc.tier_history.append({"t": t, "tier": new_tier, "severity": inc.severity})
@@ -264,7 +272,42 @@ class AlertRouter:
             note = self._route(t, ts, inc, open_list, detectors, ts_fn)
             if note:
                 new_notes.append(note)
+            if inc.diagnosis:
+                self._diag_evidence(inc)
         return new_notes
+
+    # ------------------------------------------------------------------
+    def _apply_diagnosis(self, inc: Incident, diag: dict | None) -> None:
+        """ARK Predict v2. The detectors decided *that* something is wrong; the supervised classifier says
+        *what* it is. A confirmed diagnosis is attached to every open incident on the truck (and kept at its
+        most confident reading); a confirmed, dangerous known fault lifts the incident to URGENT."""
+        cfg = self.cfg
+        if diag and diag.get("confirmed") and diag.get("fault") not in (None, "normal"):
+            # every confirmed second is a vote; the incident's diagnosis is the fault with most votes
+            votes = self._votes.setdefault(inc.id, {})
+            f = diag["fault"]
+            n, csum = votes.get(f, (0, 0.0))
+            votes[f] = (n + 1, csum + float(diag["confidence"]))
+            best = max(votes, key=lambda k: votes[k][0])
+            bn, bc = votes[best]
+            inc.diagnosis = {"fault": best, "label": FAULT_LABEL.get(best, best), "confidence": round(bc / bn, 2),
+                             "seconds": bn}
+        d = inc.diagnosis
+        if d and cfg.clf_escalate and d["fault"] in DANGEROUS_FAULTS and d["confidence"] >= 0.8 \
+                and inc.type in PROCESS_TYPES and inc.severity < cfg.severity.urgent_at:
+            inc.components = {**inc.components, "known_fault": cfg.severity.urgent_at - inc.severity}
+            inc.severity = cfg.severity.urgent_at
+            inc.explanation += (f" · ARK v2: the fault classifier recognises {d['label']} "
+                                f"({d['confidence']:.0%}) → URGENT")
+
+    @staticmethod
+    def _diag_evidence(inc: Incident) -> None:
+        d = inc.diagnosis
+        if not inc.root_cause or not d:
+            return
+        line = f"Fault classifier (supervised ML): {d['label']}, {d['confidence']:.0%} confident"
+        ev = [e for e in inc.root_cause.get("evidence", []) if not e.startswith("Fault classifier")]
+        inc.root_cause = {**inc.root_cause, "evidence": [line] + ev, "mlDiagnosis": d}
 
     # ------------------------------------------------------------------
     def _handle_spike(self, t, machine, sensor, sg, ts_fn):

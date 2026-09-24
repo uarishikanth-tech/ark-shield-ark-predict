@@ -120,5 +120,10 @@ class EngineConfig:
     ml_multivariate_score: float = 1.6   # normalized ML score (max of IF / Gaussian / autoencoder) that, sustained, opens a pattern incident
     ml_multivariate_s: int = 20          # ... for at least this many seconds
     ml_multivariate_window: int = 30     # ... out of the last this many seconds
+    use_classifier: bool = True          # ARK Predict v2: supervised fault classifier (needs a trained model)
+    clf_smooth: float = 0.25             # EWMA on the classifier's probabilities (~4 s memory)
+    clf_confirm_p: float = 0.7           # a diagnosis is "confirmed" when the same fault stays >= this ...
+    clf_confirm_n: int = 10              # ... for this many of the last 15 seconds
+    clf_escalate: bool = True            # a confirmed dangerous known fault lifts its incident to URGENT
     severity: SeverityConfig = field(default_factory=SeverityConfig)
     routing: RoutingConfig = field(default_factory=RoutingConfig)

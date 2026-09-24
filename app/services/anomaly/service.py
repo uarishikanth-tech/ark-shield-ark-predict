@@ -15,6 +15,8 @@ import asyncio
 import threading
 from datetime import datetime, timezone
 
+import numpy as np
+
 from .config import MACHINES, ROUTES, SENSOR_BY_KEY, SENSORS, TIERS, EngineConfig
 from .engine import AnomalyEngine
 from .evaluate import evaluate
@@ -24,10 +26,14 @@ from .simulator import SCENARIOS, SensorFleetSimulator
 class AnomalyService:
     def __init__(self, seed: int | None = 7, anomaly_rate_per_min: float = 0.8,
                  tick_seconds: float = 0.5, speed: int = 2, cfg: EngineConfig | None = None,
-                 oracle_feedback: bool = False) -> None:
+                 oracle_feedback: bool = False, classifier=None) -> None:
+        # classifier: ARK Predict v2 fault classifier — None (off), "shared" (the saved model, loaded in
+        # the background) or a FaultClassifier instance
         # oracle_feedback: a simulated technician labels every alerted incident when it closes,
         # using the injected ground truth — used to measure how fast the feedback loop learns.
         self.oracle_feedback = oracle_feedback
+        self._classifier_src = classifier
+        self.clf_labels: list = []          # technician verdicts turned into classifier training windows
         self.seed = seed
         self.rate = anomaly_rate_per_min
         self.tick_seconds = tick_seconds
@@ -42,6 +48,9 @@ class AnomalyService:
     def _build(self) -> None:
         self.sim = SensorFleetSimulator(seed=self.seed, anomaly_rate_per_min=self.rate)
         self.engine = AnomalyEngine(self.cfg, seed=self.seed or 0)
+        clf = self.classifier
+        if clf is not None and self.cfg.use_classifier:
+            self.engine.set_classifier(clf)
         self.warmup_end_t = 0
         self.ready = False
         self.started_at = datetime.now(timezone.utc).isoformat()
@@ -92,13 +101,57 @@ class AnomalyService:
     # ------------------------------------------------------------------
     # technician feedback
     # ------------------------------------------------------------------
-    def give_feedback(self, incident_id: int, label: str) -> dict:
+    @property
+    def classifier(self):
+        src = self._classifier_src
+        if src == "shared":
+            from .classifier import shared_classifier
+            return shared_classifier()
+        return src
+
+    def give_feedback(self, incident_id: int, label: str, fault_type: str | None = None) -> dict:
         with self._lock:
             inc = self.engine.router.incidents.get(incident_id)
             if inc is None:
                 raise KeyError(incident_id)
             entry = self.engine.router.feedback.record(inc, label, t=self.sim.t)
-        return {**entry, "table": self.engine.router.feedback.table()}
+            lab = self._label_window(inc, label, fault_type)
+        return {**entry, "table": self.engine.router.feedback.table(), "classifierLabel": lab}
+
+    def _label_window(self, inc, label: str, fault_type: str | None) -> dict | None:
+        """Technician verdict -> training data for the fault classifier (ARK Predict v2).
+        'False alarm' teaches it that this window was normal; any other verdict confirms a real fault,
+        of the type the technician names (or, if none given, the type the classifier itself suggested)."""
+        from .classifier import FAULT_CLASSES
+        clf = self.classifier
+        if clf is None:
+            return None
+        if label == "false_alarm":
+            cls = "normal"
+        else:
+            cls = fault_type or (inc.diagnosis or {}).get("fault")
+        if cls not in FAULT_CLASSES:
+            return {"added": 0, "reason": "no fault type given — pick what it actually was to teach the classifier"}
+        t0, t1 = inc.opened_t, inc.closed_t or inc.last_active_t
+        X = [f for t, f in self.engine.feat_hist.get(inc.machine, []) if t0 <= t <= t1]
+        n = clf.add_feedback(np.array(X), cls) if X else 0
+        rec = {"incidentId": inc.id, "machine": inc.machine, "faultType": cls, "rows": n, "verdict": label}
+        if n:
+            self.clf_labels.append(rec)
+        return {"added": n, "faultType": cls, "pendingWindows": len(clf.feedback_y)}
+
+    def model_status(self) -> dict:
+        clf = self.classifier
+        if clf is None:
+            return {"enabled": False}
+        return {"enabled": True, **clf.status(), "pendingLabels": list(reversed(self.clf_labels[-20:])),
+                "inUse": self.engine.clf is clf and clf.trained}
+
+    def retrain_classifier(self) -> dict:
+        clf = self.classifier
+        if clf is None or clf.base_X is None:
+            raise RuntimeError("fault classifier not loaded")
+        return clf.retrain()
 
     def feedback_table(self) -> dict:
         fb = self.engine.router.feedback
@@ -197,6 +250,9 @@ class AnomalyService:
             parts.append("Gaussian")
         if self.engine.ae is not None:
             parts.append("Autoencoder (MLP 64-12-64)" if self.engine.ae.kind == "mlp_autoencoder" else "Linear autoencoder (PCA)")
+        clf = self.engine.clf
+        if clf is not None and clf.trained:
+            parts.append("Fault classifier (v2)")
         return " + ".join(parts) or "none"
 
     def ml_info(self) -> dict:
@@ -246,6 +302,7 @@ class AnomalyService:
                 "openIncidents": len(incs),
                 "headline": r._title(worst) if worst else "All sensors within expected range",
                 "rootCause": worst.root_cause if worst else None,
+                "diagnosis": self.engine.diagnosis(m) if (self.engine.clf is not None and self.engine.clf.trained) else None,
                 "mlScore": round(self.engine.ml_last[m], 2), "ifScore": round(self.engine.if_last[m], 2),
                 "aeScore": round(self.engine.ae_last[m], 2), "gaussScore": round(self.engine.g_last[m], 2),
                 "latest": last,
@@ -394,4 +451,4 @@ def report_markdown(rep: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-anomaly_service = AnomalyService()
+anomaly_service = AnomalyService(classifier="shared")

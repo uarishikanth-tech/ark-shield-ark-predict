@@ -52,9 +52,15 @@ import numpy as np
 from .deepnp import ConvAutoencoder, LSTMAutoencoder, windows
 
 TRAIN_ROWS = 400
+# where the SKAB CSVs live when nothing else is given on the command line
+DEFAULT_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
+                                "SKAB", "data")
 SENSORS = ["Accelerometer1RMS", "Accelerometer2RMS", "Current", "Pressure", "Temperature",
            "Thermocouple", "Voltage", "Volume Flow RateRMS"]
 SLOW_CHANNELS = (4, 5)            # Temperature, Thermocouple
+SLOW_NAMES = ("Temperature", "Thermocouple", "motor_temp")     # slowly wandering (thermal) channels, any dataset
+CONTEXT_NAMES = ("duty",)         # operating-state columns: models may use them, the fixed limit does not
+NON_SENSOR = ("datetime", "anomaly", "changepoint", "fault_type", "label")
 VIEWS = {"raw": None, "drift-robust τ=120 s": 120, "drift-robust τ=600 s": 600}
 
 # Published SKAB leaderboard (outlier detection; F1, FAR %, MAR %) — README of github.com/waico/SKAB
@@ -77,6 +83,16 @@ class Experiment:
     y: np.ndarray      # (n,) 0/1 anomaly label
     t_start: str = ""  # first / last timestamp ("2020-03-09 10:14:33" sorts as text)
     t_end: str = ""
+    columns: tuple = tuple(SENSORS)                 # names of X's columns
+    missing: np.ndarray | None = None               # True where the raw cell was empty (sensor silent)
+
+    @property
+    def slow(self) -> tuple:
+        return tuple(i for i, c in enumerate(self.columns) if c in SLOW_NAMES)
+
+    @property
+    def context(self) -> tuple:
+        return tuple(i for i, c in enumerate(self.columns) if c in CONTEXT_NAMES)
 
     @property
     def Xtr(self):
@@ -87,8 +103,18 @@ class Experiment:
         return self.y[TRAIN_ROWS:]
 
 
+def _float(v: str) -> float:
+    try:
+        return float(v)
+    except ValueError:
+        return np.nan
+
+
 def load(data_dir: str) -> list[Experiment]:
-    """Every labelled SKAB csv under data_dir (the anomaly-free file is skipped), in a stable order."""
+    """Every labelled csv under data_dir (SKAB's anomaly-free file is skipped), in a stable order.
+    SKAB files use SKAB's 8 sensors. Any other ';'-separated file with a datetime column, numeric sensor
+    columns and an `anomaly` column works too (e.g. our forklift dataset): empty cells = sensor silent,
+    they are carried forward and counted in an extra `missing_sensors` column."""
     exps = []
     for root, _dirs, files in os.walk(data_dir):
         for fn in files:
@@ -98,17 +124,36 @@ def load(data_dir: str) -> list[Experiment]:
                 header = f.readline().strip().split(";")
                 rows = [line.strip().split(";") for line in f if line.strip()]
             col = {h: i for i, h in enumerate(header)}
-            if "anomaly" not in col or not all(s in col for s in SENSORS):
+            if "anomaly" not in col:
                 continue
-            X = np.array([[float(r[col[s]]) for s in SENSORS] for r in rows])
+            names = list(SENSORS) if all(s in col for s in SENSORS) else \
+                [h for h in header if h not in NON_SENSOR and h.strip()]
+            X = np.array([[_float(r[col[s]]) for s in names] for r in rows])
             y = np.array([int(float(r[col["anomaly"]])) for r in rows])
+            miss = np.isnan(X)
+            if miss.any():                                   # sensor silent: carry the last value forward
+                for j in range(X.shape[1]):
+                    last = np.nanmean(X[:TRAIN_ROWS, j]) if (~miss[:TRAIN_ROWS, j]).any() else 0.0
+                    for i in range(len(X)):
+                        if miss[i, j]:
+                            X[i, j] = last
+                        else:
+                            last = X[i, j]
+            if names != list(SENSORS):
+                X = np.column_stack([X, miss.sum(axis=1)])    # how many sensors are silent right now
+                names = names + ["missing_sensors"]
             group = os.path.basename(root)
             tcol = col.get("datetime")
             t0, t1 = (rows[0][tcol], rows[-1][tcol]) if tcol is not None and rows else ("", "")
-            exps.append(Experiment(f"{group}/{fn[:-4]}", group, X, y, t0, t1))
-    exps.sort(key=lambda e: (e.group, int(e.name.split("/")[1]) if e.name.split("/")[1].isdigit() else 0))
+            exps.append(Experiment(f"{group}/{fn[:-4]}", group, X, y, t0, t1, tuple(names), miss))
+
+    def order(e):
+        tail = e.name.split("/")[1]
+        num = tail.rsplit("_", 1)[-1]
+        return (e.group, tail.rsplit("_", 1)[0] if "_" in tail else "", int(num) if num.isdigit() else 0)
+    exps.sort(key=order)
     if not exps:
-        raise SystemExit(f"no SKAB csv files under {data_dir!r} — git clone https://github.com/waico/SKAB")
+        raise SystemExit(f"no labelled csv files under {data_dir!r} — git clone https://github.com/waico/SKAB")
     return exps
 
 
@@ -157,6 +202,7 @@ class Detector:
     zero_based = True        # score 0 = perfect (reconstruction errors); else centre on the healthy median
     defaults = Settings()
     fixed_limit: float | None = None
+    uses_context = True      # may the model see operating-state columns such as duty?
 
     def fit(self, Z: np.ndarray) -> None:  # pragma: no cover - interface
         raise NotImplementedError
@@ -171,6 +217,7 @@ class FixedLimit(Detector):
     key, label, family = "fixed", "Fixed 3σ limit (today's alarms)", "baseline"
     defaults = Settings(q=1.0, factor=1.0)
     fixed_limit = 3.0
+    uses_context = False
 
     def fit(self, Z):
         pass
@@ -344,7 +391,9 @@ class FileScores:
 
 def score_file(det_cls: type[Detector], e: Experiment, tau: float | None = None) -> FileScores:
     det = det_cls()
-    X = drift_robust(e.X, tau)
+    X = drift_robust(e.X, tau, e.slow)
+    if not det.uses_context and e.context:              # the fixed limit only watches real sensors
+        X = np.delete(X, list(e.context), axis=1)
     sc = Scaler(X[:TRAIN_ROWS])
     Z = sc(X)
     det.fit(Z[:TRAIN_ROWS])
@@ -521,7 +570,7 @@ def tune_cv(views: dict[str, list[FileScores]], exps: list[Experiment], grid=GRI
 # runner
 # ----------------------------------------------------------------------
 def run(data_dir: str, models: list[str] | None = None, with_ark: bool = True, with_supervised: bool = True,
-        log=print) -> dict:
+        log=print, name: str | None = None) -> dict:
     exps = load(data_dir)
     trues = [e.yte for e in exps]
     models = models or list(DETECTORS)
@@ -598,15 +647,24 @@ def run(data_dir: str, models: list[str] | None = None, with_ark: bool = True, w
     if with_ark:
         from .replay import replay_array
         t0 = time.time()
-        preds = [replay_array(SENSORS, e.X, train_rows=TRAIN_ROWS, strict_train_rows=True)["flags"][TRAIN_ROWS:]
-                 for e in exps]
+        preds = []
+        for e in exps:
+            keep = [j for j, c in enumerate(e.columns) if c not in CONTEXT_NAMES and c != "missing_sensors"]
+            Xr = e.X[:, keep].copy()
+            if e.missing is not None and e.missing.any():
+                Xr[e.missing[:, keep]] = np.nan                  # let v1 see the dropouts as dropouts
+            preds.append(replay_array([e.columns[j] for j in keep], Xr, train_rows=TRAIN_ROWS,
+                                      strict_train_rows=True)["flags"][TRAIN_ROWS:])
         add("ark", "ARK Predict live pipeline (v1)", "ours", "as deployed", preds, {}, round(time.time() - t0, 1))
 
     always = metrics([np.ones_like(t) for t in trues], trues)
-    return {"dataset": {"name": "SKAB v0.9", "files": len(exps), "test_rows": int(sum(len(t) for t in trues)),
+    is_skab = list(exps[0].columns) == list(SENSORS)
+    return {"dataset": {"name": name or ("SKAB v0.9" if is_skab else os.path.basename(os.path.normpath(data_dir))),
+                        "columns": list(exps[0].columns), "files": len(exps), "test_rows": int(sum(len(t) for t in trues)),
                         "anomalous_share": round(float(np.mean(np.concatenate(trues))), 3),
                         "always_alarm_f1": always["f1"]},
-            "rows": rows, "auc": auc, "leaderboard": [dict(zip(("label", "f1", "far", "mar"), r)) for r in LEADERBOARD],
+            "rows": rows, "auc": auc,
+            "leaderboard": [dict(zip(("label", "f1", "far", "mar"), r)) for r in LEADERBOARD] if is_skab else [],
             "experiments": [e.name for e in exps], "_preds": preds_out, "_scores": scores, "_exps": exps}
 
 
@@ -639,7 +697,8 @@ def public(res: dict) -> dict:
 
 def main() -> None:  # pragma: no cover
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("data", help="SKAB data folder (git clone https://github.com/waico/SKAB)")
+    ap.add_argument("data", nargs="?", default=DEFAULT_DATA_DIR,
+                    help="dataset folder (default: SKAB/data in the project — git clone https://github.com/waico/SKAB)")
     ap.add_argument("--models", default=",".join(DETECTORS), help="comma list of " + ",".join(DETECTORS))
     ap.add_argument("--fast", action="store_true", help="skip the (slow) conv autoencoder")
     ap.add_argument("--no-ark", action="store_true", help="skip replaying the live ARK Predict pipeline")
@@ -675,6 +734,12 @@ if __name__ == "__main__":  # pragma: no cover
 REPLAY_SENSORS = ("Volume Flow RateRMS", "Accelerometer1RMS", "Current", "Temperature")
 
 
+def _replay_cols(e: Experiment) -> list[str]:
+    if all(c in e.columns for c in REPLAY_SENSORS):
+        return list(REPLAY_SENSORS)
+    return [c for c in e.columns if c not in CONTEXT_NAMES and c != "missing_sensors"][:5]
+
+
 def _segs_abs(mask, offset=0):
     return [[int(a) + offset, int(b) + offset] for a, b in _segments(mask)]
 
@@ -696,7 +761,7 @@ def export_dashboard(res: dict, exps: list[Experiment], path: str) -> dict:
         replay[e.name] = {
             "group": e.group, "rows": len(e.X), "train_rows": TRAIN_ROWS,
             "fault": _segs_abs(e.y.astype(bool)),
-            "sensors": {s: [float(f"{v:.4g}") for v in e.X[:, SENSORS.index(s)]] for s in REPLAY_SENSORS},
+            "sensors": {c: [float(f"{v:.4g}") for v in e.X[:, list(e.columns).index(c)]] for c in _replay_cols(e)},
             "alarms": tracks,
         }
     out = {**public(res), "replay": replay}

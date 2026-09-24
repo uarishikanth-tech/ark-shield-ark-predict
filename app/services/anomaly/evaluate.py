@@ -19,6 +19,8 @@ import argparse
 import json
 from collections import Counter, defaultdict
 
+import numpy as np
+
 from .config import TIER_RANK, TIERS
 
 MATCH_AFTER_S = 90   # an incident opened up to this long after a fault ends still counts
@@ -140,19 +142,78 @@ def evaluate(anomalies, incidents, notifications, baseline_alerts, t_start: int,
 ML_CHOICES = ("all", "none", "if", "gauss", "ae")
 
 
-def run(hours: float = 4.0, seed: int = 11, rate: float = 1.2, ml: str = "all") -> dict:
-    """ml: 'all' (default: Isolation Forest + Gaussian + autoencoder), 'none' (statistics only),
-    or one model alone: 'if', 'gauss', 'ae'."""
+def _service(hours, seed, rate, ml="all", v2=False):
     from .config import EngineConfig
     from .service import AnomalyService
     cfg = EngineConfig()
     cfg.use_isolation_forest = ml in ("all", "both", "if")
     cfg.use_gaussian = ml in ("all", "both", "gauss")
     cfg.use_autoencoder = ml in ("all", "both", "ae")
-    svc = AnomalyService(seed=seed, anomaly_rate_per_min=rate, cfg=cfg)
+    clf = None
+    if v2:
+        from .classifier import FaultClassifier
+        clf = FaultClassifier.load()
+    svc = AnomalyService(seed=seed, anomaly_rate_per_min=rate, cfg=cfg, classifier=clf)
     svc.ensure_ready()
     svc.step(int(hours * 3600))
-    return svc.summary(include_faults=True)
+    return svc
+
+
+def run(hours: float = 4.0, seed: int = 11, rate: float = 1.2, ml: str = "all", v2: bool = False) -> dict:
+    """ml: 'all' (default: Isolation Forest + Gaussian + autoencoder), 'none' (statistics only),
+    or one model alone: 'if', 'gauss', 'ae'. v2: also run the supervised fault classifier (ARK Predict v2)."""
+    return _service(hours, seed, rate, ml, v2).summary(include_faults=True)
+
+
+def v2_extras(svc) -> dict:
+    """What v2 adds on top of the summary: is the named fault right, and how fast are dangerous faults paged?"""
+    from .classifier import FAULT_CLASSES
+    r = svc.engine.router
+    diag_right = diag_total = diag_named = 0
+    per = {}
+    ttu = []
+    for a in svc.sim.anomalies:
+        if a.start <= svc.warmup_end_t or a.scenario not in FAULT_CLASSES:
+            continue
+        sens = set(a.effects)
+        incs = [i for i in r.incidents.values() if i.machine == a.machine and i.opened_t <= a.end + 60
+                and (i.closed_t or i.last_active_t) >= a.start and i.notified_tier
+                and (i.sensor in sens or (i.sensor is None and (i.sensor_hint in sens or not i.sensor_hint)))]
+        named = [i.diagnosis["fault"] for i in incs if i.diagnosis]
+        if incs:
+            diag_total += 1
+            ok = bool(named) and max(set(named), key=named.count) == a.scenario
+            diag_right += ok
+            diag_named += bool(named)
+            p = per.setdefault(a.scenario, [0, 0])
+            p[0] += ok
+            p[1] += 1
+        if a.truth_tier == "URGENT":
+            urg = [n["t"] for n in r.notifications if n["machine"] == a.machine and n["tier"] == "URGENT"
+                   and a.start <= n["t"] <= a.end + 60]
+            if urg:
+                ttu.append(min(urg) - a.start)
+    return {"diagnosisAccuracy": round(diag_right / diag_total, 3) if diag_total else None,
+            "diagnosisNamed": round(diag_named / diag_total, 3) if diag_total else None,
+            "diagnosisPrecision": round(diag_right / diag_named, 3) if diag_named else None,
+            "diagnosedFaults": diag_total, "perScenario": {k: f"{v[0]}/{v[1]}" for k, v in per.items()},
+            "medianSecondsToUrgent": float(np.median(ttu)) if ttu else None, "urgentPaged": len(ttu)}
+
+
+def compare_v2(hours: float = 3.0, seed: int = 11, rate: float = 1.2) -> dict:
+    """ARK Predict v1 (detectors + unsupervised ML) vs v2 (+ supervised fault classifier), same stream."""
+    out = {}
+    for name, v2 in (("v1", False), ("v2", True)):
+        svc = _service(hours, seed, rate, "all", v2)
+        ev = svc.summary(include_faults=True)["evaluation"]
+        out[name] = {"detectionRate": ev["detectionRate"], "typeAccuracy": ev["typeAccuracy"],
+                     "exactTier": ev["severityCalibration"]["exactTierAccuracy"],
+                     "urgentRecall": ev["severityCalibration"]["urgentRecall"],
+                     "falseAlarmsPerHour": ev["falseAlarms"]["notificationsPerHour"],
+                     "alertsSent": ev["alertFatigue"]["notifications"],
+                     "alertPrecision": ev["alertFatigue"]["notificationPrecision"],
+                     "faults": ev["faultsScored"], **v2_extras(svc)}
+    return out
 
 
 def compare(hours: float = 3.0, seed: int = 11, rate: float = 1.2) -> dict:
