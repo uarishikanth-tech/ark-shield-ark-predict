@@ -79,6 +79,12 @@ python tests/test_anomaly.py                 # tests
 
 Full write-up, results, demo script and API: **[ANOMALY.md](./ANOMALY.md)**.
 
+**Tested on real industrial data:** on the SKAB benchmark (34 real pump experiments, official leaderboard
+protocol) the fixed 3σ limit flags 44 % of normal time and fires 95 false alarms per hour. ARK Predict v2
+(supervised model for known faults + deep-learning autoencoders for new ones) catches all 34 faults with F1 0.81,
+a 24 % false-alarm rate and 12 false-alarm episodes per hour — trained only on earlier experiments. Details:
+**[SKAB_RESULTS.md](./SKAB_RESULTS.md)**; live in the dashboard's **ML Lab** page.
+
 ## Tech stack
 
 - **Runtime:** Python 3.11+, FastAPI, Uvicorn

@@ -161,7 +161,17 @@ it as an asyncio task in the same event loop as the forklift simulation, keeps
 state in memory (no database dependency), serves `/api/anomaly/*`
 (`app/routers/anomaly.py`) and emits `anomaly:alert` over Socket.IO. The
 ARK Predict page in `app/static/index.html` is the one view of the demo UI
-that talks to the real backend.
+that talks to the real backend (together with the ML Lab page).
+
+**Real-data benchmark.** `app/services/anomaly/skab.py` runs the fixed-limit
+baseline and 10 models (PCA T²+Q, Isolation Forest, LOF, One-Class SVM, dense /
+Conv-1D / LSTM autoencoders, ensemble, supervised gradient boosting, ARK v2
+hybrid) on the SKAB dataset with the official leaderboard protocol and
+grouped cross-validated tuning; `deepnp.py` holds the numpy Conv-1D / LSTM
+autoencoders. Results are exported once to
+`app/services/anomaly/results/skab_results.json` and served read-only by
+`GET /api/anomaly/benchmark[/replay]` to the dashboard's ML Lab page, so the
+demo needs neither the dataset nor retraining. See [SKAB_RESULTS.md](./SKAB_RESULTS.md).
 
 The original, collision-prediction idea for ARK Predict below remains future work:
 no endpoint exists for it, matching the browser demo's original

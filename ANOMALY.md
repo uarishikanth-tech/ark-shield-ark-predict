@@ -65,7 +65,7 @@ Same 6-hour stream and faults, five model configurations:
 
 Each ML model earns its place with a fault class the others miss: the **autoencoder** finds oscillations (a wobble inside every single-reading limit, e.g. a slack lift chain), and the **Gaussian** finds joint shifts (overload: pressure ↑, current ↑, voltage ↓, each under its own limit). The **Isolation Forest**, fed the same smoothed input, adds little on its own in this benchmark (2 overloads vs 1). In the full stack it is often the first model to raise an overload, and it makes no distribution assumptions, which matters on real data that is not Gaussian. Be honest about this if asked. Overload is the hardest fault: if the truck sits idle the extra load does not show, so 9 of 22 slip by.
 
-**Caveat:** the detectors were tuned against this simulator, so the numbers show the design works end to end. They are not a claim about real forklifts. The same evaluator runs unchanged on a replayed real dataset (NASA / SKAB-style CSV) once one is wired into the simulator's place.
+**Caveat:** the detectors were tuned against this simulator, so the numbers show the design works end to end. They are not a claim about real forklifts. Real-data results (SKAB) are in the next section and in [SKAB_RESULTS.md](./SKAB_RESULTS.md).
 
 ---
 
@@ -92,23 +92,30 @@ python tests/test_anomaly.py                             # 14 tests (or: python 
 python scripts/check_ark_predict.py                      # demo-day smoke test against the RUNNING server
 ```
 
-### Run it on real data (SKAB)
+### Run it on real data (SKAB) — done
 
-The brief suggests the SKAB benchmark (Skoltech Anomaly Benchmark: pump / valve test rig, 8 sensors, 1 Hz, labelled anomalies). `replay.py` streams any SKAB-format CSV through the same detectors and models and scores it against the labels:
+**Full results: [SKAB_RESULTS.md](./SKAB_RESULTS.md)** (also live in the dashboard: **ML Lab** page).
+
+On the real SKAB benchmark (34 water-pump experiments, 8 sensors, hand-labelled faults, official leaderboard
+protocol, scoring code verified against the published leaderboard):
+
+| | F1 | False-alarm rate | False-alarm episodes / h | Faults caught |
+|---|---:|---:|---:|---:|
+| Fixed 3σ limit (today's alarms) | 0.76 | 44 % | 95 | 32/34 |
+| Conv-1D autoencoder (improved) | 0.75 | 18 % | 2.3 | 29/34 |
+| **ARK Predict v2** (trained on past experiments only) | **0.81** | 24 % | 12 | **34/34** |
+| ↳ its URGENT tier alone (supervised) | 0.75 | **5 %** | 5.9 | 27/34 |
+| ARK Predict v2 on never-seen fault families | 0.81 | 26 % | 11 | 34/34 |
+| Best published SKAB model (Conv-AE, unsupervised) | 0.78 | 13.6 % | — | — |
 
 ```bash
-# download https://github.com/waico/SKAB  (the data/ folder), then:
-python -m app.services.anomaly.replay path/to/SKAB/data          # every CSV in the folder
-python -m app.services.anomaly.replay path/to/file.csv --no-ml   # statistics only, for comparison
-
-# no dataset on this laptop? generate a SKAB-format file from the simulator and replay it:
-python -m app.services.anomaly.replay --make-demo demo_skab.csv
-python -m app.services.anomaly.replay demo_skab.csv
+git clone https://github.com/waico/SKAB
+python -m app.services.anomaly.skab SKAB/data --export   # 10 models + fixed limit + ARK v1/v2 (~20 min; --fast skips conv-AE)
+SKAB_DIR=SKAB python tests/test_skab.py                   # incl. reproducing the published leaderboard numbers
 ```
 
-For each file, the first 400 rows (normal only) teach every column's baseline and the three ML models. The rest is streamed row by row. You get point-wise precision / recall / F1, event recall, detection delay and false alarms per hour, next to a fixed 3σ threshold. Generic data has no load/duty channel, so each column's expected value is its healthy mean.
-
-On the simulator-made demo file: F1 0.57 with the ML models vs 0.36 statistics-only vs 0.06 for the fixed threshold; all 4 labelled events found; 0 false-alarm events. **We have not run it on SKAB itself** (no internet in the build sandbox). Run it before the demo and quote the real numbers if they help.
+`replay.py` still streams any SKAB-format CSV through the *live* v1 pipeline row by row
+(`python -m app.services.anomaly.replay SKAB/data`).
 
 ### Settings (`.env`)
 
@@ -213,6 +220,9 @@ app/services/anomaly/
   service.py      live asyncio service, API views, Markdown report
   evaluate.py     offline benchmark vs ground truth (CLI)
   replay.py       replay real labelled CSVs (SKAB format) through the same pipeline + score them
+  skab.py         SKAB benchmark: fixed limit vs 10 models (PCA, IF, LOF, OCSVM, 3 autoencoders, ensemble, supervised, hybrid)
+  deepnp.py       numpy deep learning: Conv-1D + LSTM autoencoders with hand-written backprop (gradient-checked)
+  results/skab_results.json   precomputed benchmark results + replays for the ML Lab page
 app/routers/anomaly.py   REST API
 tests/test_anomaly.py    14 tests
 scripts/check_ark_predict.py   demo-day smoke test (run against the live server)
