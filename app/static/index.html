@@ -1,0 +1,2343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARK Shield — Command Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+/* ============================================================
+   ARK SHIELD — design tokens
+   Industrial HMI palette: deep graphite-navy base, signal-blue
+   brand accent, traffic-light semantics reserved strictly for
+   risk/zone/status meaning (never used decoratively).
+   ============================================================ */
+:root{
+  --bg:#0D1117;
+  --bg-raised:#121821;
+  --panel:#161D27;
+  --panel-2:#1B2430;
+  --hairline:#28323F;
+  --hairline-soft:#1F2833;
+  --text:#E7EDF4;
+  --text-dim:#93A2B4;
+  --text-faint:#5B6B7D;
+  --accent:#4E8CFF;
+  --accent-dim:#1E3868;
+  --accent-soft:rgba(78,140,255,0.12);
+  --safe:#33D482;
+  --safe-dim:rgba(51,212,130,0.14);
+  --warn:#F0A83B;
+  --warn-dim:rgba(240,168,59,0.14);
+  --high:#E8703B;
+  --high-dim:rgba(232,112,59,0.16);
+  --danger:#F0473C;
+  --danger-dim:rgba(240,71,60,0.16);
+  --info:#8B9BB4;
+  --font-display:'Barlow Condensed',sans-serif;
+  --font-body:'Inter',sans-serif;
+  --font-mono:'IBM Plex Mono',monospace;
+  --radius:3px;
+  --radius-lg:6px;
+}
+:root[data-theme="light"]{
+  --bg:#EEF1F5;
+  --bg-raised:#F6F8FA;
+  --panel:#FFFFFF;
+  --panel-2:#F2F4F7;
+  --hairline:#D6DCE3;
+  --hairline-soft:#E4E8ED;
+  --text:#101722;
+  --text-dim:#4C5A6B;
+  --text-faint:#8C97A5;
+  --accent:#2E63D6;
+  --accent-dim:#DDE8FF;
+  --accent-soft:rgba(46,99,214,0.08);
+  --high:#C85A26;
+  --high-dim:rgba(200,90,38,0.12);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D1117; --bg-raised:#121821; --panel:#161D27; --panel-2:#1B2430;
+    --hairline:#28323F; --hairline-soft:#1F2833;
+    --text:#E7EDF4; --text-dim:#93A2B4; --text-faint:#5B6B7D;
+    --accent:#4E8CFF; --accent-dim:#1E3868; --accent-soft:rgba(78,140,255,0.12);
+  }
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font-body);
+  font-size:13.5px;
+  line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+::selection{background:var(--accent-soft);}
+button{font-family:inherit;}
+a{color:var(--accent);}
+.mono{font-family:var(--font-mono);}
+.hidden{display:none !important;}
+::-webkit-scrollbar{width:9px;height:9px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--hairline);border-radius:5px;}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+
+/* ---------- login ---------- */
+#login-screen{
+  position:fixed;inset:0;background:
+    radial-gradient(circle at 18% 20%, rgba(78,140,255,0.10), transparent 45%),
+    radial-gradient(circle at 82% 78%, rgba(51,212,130,0.06), transparent 40%),
+    var(--bg);
+  display:flex;align-items:center;justify-content:center;z-index:500;
+}
+.login-card{
+  width:420px;max-width:92vw;background:var(--panel);
+  border:1px solid var(--hairline);border-radius:var(--radius-lg);
+  padding:36px 34px 30px;
+}
+.login-brand{display:flex;align-items:center;gap:11px;margin-bottom:6px;}
+.login-brand svg{flex:none;}
+.login-brand-text{font-family:var(--font-display);font-weight:700;font-size:26px;letter-spacing:0.5px;}
+.login-brand-text b{color:var(--accent);}
+.login-tag{color:var(--text-dim);font-size:12.5px;margin:0 0 26px;}
+.field{margin-bottom:16px;}
+.field label{display:block;font-size:11.5px;color:var(--text-dim);margin-bottom:6px;letter-spacing:.2px;}
+.field input, .field select{
+  width:100%;background:var(--bg-raised);border:1px solid var(--hairline);
+  color:var(--text);padding:9px 11px;border-radius:var(--radius);font-size:13.5px;
+}
+.field input:focus, .field select:focus{border-color:var(--accent);}
+.role-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:22px;}
+.role-opt{
+  border:1px solid var(--hairline);background:var(--bg-raised);border-radius:var(--radius);
+  padding:9px 10px;cursor:pointer;font-size:12px;color:var(--text-dim);
+}
+.role-opt .rname{color:var(--text);font-weight:600;display:block;font-size:12.5px;}
+.role-opt.active{border-color:var(--accent);background:var(--accent-soft);color:var(--text);}
+.btn-primary{
+  width:100%;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);
+  padding:11px;font-size:13.5px;font-weight:600;cursor:pointer;
+}
+.btn-primary:hover{filter:brightness(1.08);}
+.login-note{color:var(--text-faint);font-size:11px;margin-top:16px;text-align:center;}
+
+/* ---------- app shell ---------- */
+#app{display:none;height:100vh;}
+#app.show{display:flex;}
+.sidebar{
+  width:216px;flex:none;background:var(--bg-raised);border-right:1px solid var(--hairline);
+  display:flex;flex-direction:column;height:100vh;position:sticky;top:0;
+}
+.brand-row{padding:18px 18px 14px;display:flex;align-items:center;gap:9px;border-bottom:1px solid var(--hairline-soft);}
+.brand-row .brand-text{font-family:var(--font-display);font-weight:700;font-size:19px;letter-spacing:.4px;}
+.brand-row .brand-text b{color:var(--accent);}
+.nav{flex:1;overflow-y:auto;padding:10px 8px;}
+.nav-group-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text-faint);padding:12px 10px 5px;}
+.nav-item{
+  display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--radius);
+  color:var(--text-dim);font-size:13px;cursor:pointer;margin-bottom:1px;position:relative;
+}
+.nav-item svg{flex:none;opacity:.85;}
+.nav-item:hover{background:var(--panel-2);color:var(--text);}
+.nav-item.active{background:var(--accent-soft);color:var(--text);}
+.nav-item.active svg{color:var(--accent);opacity:1;}
+.nav-item .nbadge{
+  margin-left:auto;background:var(--danger);color:#fff;font-size:10px;font-weight:700;
+  padding:1px 6px;border-radius:8px;
+}
+.sim-indicator{
+  margin:8px 10px 12px;padding:9px 10px;border:1px solid var(--hairline);border-radius:var(--radius);
+  background:var(--panel);font-size:11px;color:var(--text-dim);
+}
+.sim-indicator .dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--text-faint);}
+.sim-indicator.running .dot{background:var(--safe);box-shadow:0 0 0 3px var(--safe-dim);}
+.sim-indicator .lbl{font-weight:700;letter-spacing:.4px;color:var(--text);}
+
+.main{flex:1;height:100vh;overflow-y:auto;display:flex;flex-direction:column;min-width:0;}
+.topbar{
+  height:54px;flex:none;border-bottom:1px solid var(--hairline);display:flex;align-items:center;
+  padding:0 20px;gap:14px;background:var(--bg);position:sticky;top:0;z-index:20;
+}
+.topbar .crumbs{font-size:12px;color:var(--text-dim);}
+.topbar .crumbs b{color:var(--text);font-weight:600;}
+.org-select{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--text-dim);}
+.org-select select{background:var(--bg-raised);border:1px solid var(--hairline);color:var(--text);border-radius:var(--radius);padding:5px 8px;font-size:12px;}
+.spacer{flex:1;}
+.icon-btn{
+  width:32px;height:32px;border-radius:var(--radius);border:1px solid transparent;background:transparent;
+  display:flex;align-items:center;justify-content:center;color:var(--text-dim);cursor:pointer;position:relative;
+}
+.icon-btn:hover{background:var(--panel-2);color:var(--text);border-color:var(--hairline);}
+.icon-btn .abadge{
+  position:absolute;top:2px;right:2px;background:var(--danger);color:#fff;border-radius:8px;
+  font-size:9px;font-weight:700;padding:0 4px;line-height:14px;min-width:14px;text-align:center;
+}
+.profile-chip{display:flex;align-items:center;gap:8px;padding:5px 9px 5px 5px;border-radius:20px;border:1px solid var(--hairline);cursor:pointer;}
+.profile-chip .av{width:24px;height:24px;border-radius:50%;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;}
+.profile-chip .role{font-size:10.5px;color:var(--text-faint);display:block;}
+.profile-chip .name{font-size:12px;color:var(--text);display:block;line-height:1.2;}
+
+.content{padding:20px 22px 40px;max-width:1500px;width:100%;margin:0 auto;}
+.view-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;}
+.view-title{font-family:var(--font-display);font-size:26px;font-weight:700;letter-spacing:.3px;}
+.view-sub{color:var(--text-dim);font-size:12.5px;margin-top:2px;}
+.view-actions{display:flex;gap:8px;}
+
+/* ---------- generic components ---------- */
+.btn{
+  border:1px solid var(--hairline);background:var(--panel-2);color:var(--text);border-radius:var(--radius);
+  padding:7px 12px;font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;
+}
+.btn:hover{border-color:var(--accent);color:var(--text);}
+.btn:disabled{opacity:.4;cursor:not-allowed;}
+.btn.accent{background:var(--accent);border-color:var(--accent);color:#fff;}
+.btn.accent:hover{filter:brightness(1.08);}
+.btn.danger-o{border-color:var(--danger);color:var(--danger);background:transparent;}
+.btn.sm{padding:4px 9px;font-size:11.5px;}
+
+.grid{display:grid;gap:14px;}
+.g-stats{grid-template-columns:repeat(auto-fit,minmax(168px,1fr));}
+.g-2{grid-template-columns:1.6fr 1fr;}
+.g-3{grid-template-columns:repeat(3,1fr);}
+@media(max-width:1180px){.g-2,.g-3{grid-template-columns:1fr;}}
+
+.panel{
+  background:var(--panel);border:1px solid var(--hairline);border-radius:var(--radius-lg);
+  padding:16px 16px;
+}
+.panel-head{display:flex;align-items:center;justify-content:between;justify-content:space-between;margin-bottom:12px;}
+.panel-title{font-family:var(--font-display);font-size:15.5px;font-weight:600;letter-spacing:.3px;}
+.panel-title small{display:block;font-family:var(--font-body);font-size:11px;color:var(--text-faint);font-weight:400;margin-top:1px;}
+
+.stat-tile{
+  background:var(--panel);border:1px solid var(--hairline);border-radius:var(--radius-lg);
+  padding:13px 14px;position:relative;overflow:hidden;
+}
+.stat-tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--tile-c,var(--hairline));}
+.stat-tile .lbl{font-size:11px;color:var(--text-dim);letter-spacing:.2px;}
+.stat-tile .val{font-family:var(--font-mono);font-size:25px;font-weight:600;margin-top:4px;line-height:1;}
+.stat-tile .sub{font-size:11px;color:var(--text-faint);margin-top:5px;}
+
+.badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:10.5px;font-weight:700;letter-spacing:.3px;}
+.badge.safe,.badge.low,.badge.online,.badge.active,.badge.authorized,.badge.current{background:var(--safe-dim);color:var(--safe);}
+.badge.warn,.badge.caution,.badge.medium,.badge.warning,.badge.degraded,.badge.idle,.badge.charging{background:var(--warn-dim);color:var(--warn);}
+.badge.high{background:var(--high-dim);color:var(--high);}
+.badge.danger,.badge.critical,.badge.offline,.badge.maintenance,.badge.unauthorized{background:var(--danger-dim);color:var(--danger);}
+.badge.info,.badge.acknowledged,.badge.resolved,.badge.closed,.badge.reviewed{background:rgba(139,155,180,0.14);color:var(--info);}
+.badge.dot::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;}
+
+table{width:100%;border-collapse:collapse;}
+th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-faint);
+   font-weight:600;padding:8px 10px;border-bottom:1px solid var(--hairline);white-space:nowrap;}
+td{padding:9px 10px;border-bottom:1px solid var(--hairline-soft);font-size:12.5px;vertical-align:middle;white-space:nowrap;}
+tr.clickable{cursor:pointer;}
+tr.clickable:hover td{background:var(--panel-2);}
+.table-wrap{overflow-x:auto;}
+.table-wrap table{min-width:640px;}
+.empty-row td{color:var(--text-faint);text-align:center;padding:26px;white-space:normal;}
+
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--hairline);margin-bottom:14px;}
+.tab{padding:8px 14px;font-size:12.5px;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;}
+.tab.active{color:var(--text);border-bottom-color:var(--accent);}
+.filter-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center;}
+.filter-row select, .filter-row input[type=text]{
+  background:var(--bg-raised);border:1px solid var(--hairline);color:var(--text);
+  padding:6px 9px;border-radius:var(--radius);font-size:12px;
+}
+
+.alert-card{border:1px solid var(--hairline);border-left:3px solid var(--sev-c,var(--hairline));border-radius:var(--radius);
+  padding:11px 12px;margin-bottom:9px;background:var(--panel-2);}
+.alert-card .hd{display:flex;align-items:center;gap:8px;margin-bottom:5px;}
+.alert-card .ttl{font-weight:700;font-size:12.5px;letter-spacing:.2px;}
+.alert-card .meta{font-size:11.5px;color:var(--text-dim);margin-bottom:8px;}
+.alert-card .meta b{color:var(--text);font-weight:600;}
+.alert-card .acts{display:flex;gap:6px;flex-wrap:wrap;}
+
+.map-wrap{position:relative;background:var(--bg-raised);border:1px solid var(--hairline);border-radius:var(--radius-lg);overflow:hidden;}
+.map-legend{position:absolute;bottom:10px;left:10px;background:rgba(13,17,23,0.82);border:1px solid var(--hairline);
+  border-radius:var(--radius);padding:8px 10px;font-size:10.5px;color:var(--text-dim);display:flex;gap:12px;flex-wrap:wrap;}
+:root[data-theme="light"] .map-legend{background:rgba(255,255,255,0.85);}
+.map-legend span{display:flex;align-items:center;gap:5px;}
+.map-legend i{width:9px;height:9px;border-radius:2px;display:inline-block;}
+.sim-banner{position:absolute;top:10px;left:10px;background:rgba(13,17,23,0.82);border:1px solid var(--accent);
+  color:var(--accent);font-size:10.5px;font-weight:700;letter-spacing:.6px;padding:5px 10px;border-radius:20px;}
+:root[data-theme="light"] .sim-banner{background:rgba(255,255,255,0.9);}
+
+.risk-gauge{text-align:center;padding:6px 0 4px;}
+.risk-gauge .num{font-family:var(--font-mono);font-size:44px;font-weight:600;line-height:1;}
+.risk-gauge .lbl{font-size:11px;color:var(--text-dim);margin-top:6px;letter-spacing:.4px;}
+.risk-gauge .track{height:6px;background:var(--hairline);border-radius:4px;margin-top:12px;overflow:hidden;}
+.risk-gauge .fill{height:100%;border-radius:4px;}
+
+.kv-row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--hairline-soft);font-size:12.5px;}
+.kv-row:last-child{border-bottom:none;}
+.kv-row .k{color:var(--text-dim);}
+.kv-row .v{font-weight:600;}
+.kv-row .v.mono{font-family:var(--font-mono);}
+
+.cam-frame{position:relative;background:#05070A;border-radius:var(--radius-lg);overflow:hidden;aspect-ratio:16/9;border:1px solid var(--hairline);}
+.cam-frame svg{width:100%;height:100%;display:block;}
+.cam-hud{position:absolute;top:8px;left:10px;font-family:var(--font-mono);font-size:10px;color:#8fd0ff;text-shadow:0 1px 2px #000;}
+.cam-hud-r{position:absolute;top:8px;right:10px;font-family:var(--font-mono);font-size:10px;color:#8fd0ff;text-shadow:0 1px 2px #000;text-align:right;}
+
+.detail-drawer{position:fixed;top:0;right:0;height:100vh;width:400px;max-width:92vw;background:var(--panel);
+  border-left:1px solid var(--hairline);z-index:200;transform:translateX(100%);transition:transform .22s ease;
+  overflow-y:auto;box-shadow:-8px 0 24px rgba(0,0,0,.35);}
+.detail-drawer.open{transform:translateX(0);}
+.drawer-scrim{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:190;opacity:0;pointer-events:none;transition:opacity .2s;}
+.drawer-scrim.open{opacity:1;pointer-events:auto;}
+.drawer-head{padding:16px 18px;border-bottom:1px solid var(--hairline);display:flex;align-items:center;justify-content:space-between;}
+.drawer-body{padding:16px 18px;}
+.drawer-close{background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:18px;line-height:1;}
+
+.toast-stack{position:fixed;bottom:18px;right:18px;z-index:400;display:flex;flex-direction:column;gap:8px;}
+.toast{background:var(--panel);border:1px solid var(--hairline);border-left:3px solid var(--sev-c,var(--accent));
+  border-radius:var(--radius);padding:10px 14px;font-size:12.5px;min-width:250px;max-width:340px;
+  box-shadow:0 6px 18px rgba(0,0,0,.3);animation:toastin .18s ease;}
+@keyframes toastin{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+.toast b{display:block;margin-bottom:2px;}
+
+.zone-swatch{width:12px;height:12px;border-radius:2px;display:inline-block;margin-right:6px;vertical-align:-1px;}
+.checklist{display:flex;flex-direction:column;gap:8px;}
+.checklist label{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-dim);}
+
+.slider-row{margin-bottom:16px;}
+.slider-row .top{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px;}
+.slider-row input[type=range]{width:100%;accent-color:var(--accent);}
+.notice-box{border:1px solid var(--warn);background:var(--warn-dim);color:var(--warn);border-radius:var(--radius);
+  padding:10px 12px;font-size:12px;margin-bottom:14px;}
+.notice-box.danger{border-color:var(--danger);background:var(--danger-dim);color:var(--danger);}
+
+.health-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--hairline-soft);font-size:12.5px;}
+.health-row:last-child{border-bottom:none;}
+.dot-status{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:8px;}
+.dot-status.online{background:var(--safe);}
+.dot-status.degraded{background:var(--warn);}
+.dot-status.offline{background:var(--danger);}
+
+.empty-state{text-align:center;padding:44px 20px;color:var(--text-faint);}
+.empty-state svg{opacity:.4;margin-bottom:10px;}
+
+@media(max-width:880px){
+  .sidebar{position:fixed;left:0;top:0;z-index:150;transform:translateX(-100%);transition:transform .2s;}
+  .sidebar.open{transform:translateX(0);}
+  .content{padding:16px;}
+  .detail-drawer{width:100%;}
+}
+.menu-toggle{display:none;}
+@media(max-width:880px){.menu-toggle{display:flex;}}
+
+@media (prefers-reduced-motion: reduce){
+  .toast{animation:none;}
+  .detail-drawer{transition:none;}
+  *{scroll-behavior:auto !important;}
+}
+/* ---------- ARK Predict (machine-health anomaly detection) ---------- */
+.pr-actions{align-items:center;flex-wrap:wrap;}
+.pr-actions select,.pr-inject select,#pr-points,#pr-rate{background:var(--bg-raised);border:1px solid var(--hairline);color:var(--text);
+  border-radius:var(--radius);padding:5px 8px;font-size:12px;font-family:var(--font-body);}
+.pr-fleet{display:grid;grid-template-columns:repeat(auto-fit,minmax(172px,1fr));gap:10px;}
+.pr-truck{background:var(--panel);border:1px solid var(--hairline);border-left:3px solid var(--tc);border-radius:var(--radius-lg);
+  padding:10px 12px;cursor:pointer;min-width:0;transition:border-color .15s;}
+.pr-truck:hover{border-color:var(--accent);border-left-color:var(--tc);}
+.pr-truck.sel{outline:1px solid var(--accent);background:var(--panel-2);}
+.pr-truck-hd{display:flex;justify-content:space-between;gap:6px;font-size:12.5px;}
+.pr-truck-hd .mono{font-size:11px;}
+.pr-truck-tier{margin:6px 0 4px;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-dim);}
+.pr-truck-msg{font-size:11.5px;color:var(--text-dim);line-height:1.35;min-height:31px;display:-webkit-box;-webkit-line-clamp:2;
+  -webkit-box-orient:vertical;overflow:hidden;}
+.pr-truck-ft{font-size:10.5px;color:var(--text-faint);margin-top:5px;font-family:var(--font-mono);}
+.pr-chart-row{margin-bottom:6px;}
+.pr-chart-hd{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11.5px;color:var(--text-dim);flex-wrap:wrap;}
+.pr-chart-hd small{color:var(--text-faint);}
+.pr-chart-hd .mono{font-size:11px;color:var(--text);display:flex;gap:4px;align-items:center;}
+.pr-chart-box{height:74px;position:relative;border-bottom:1px solid var(--hairline-soft);}
+.pr-chart-box svg{width:100%;height:100%;display:block;overflow:hidden;}
+.pr-y{position:absolute;left:2px;font-size:9.5px;font-family:var(--font-mono);color:var(--text-faint);pointer-events:none;
+  background:var(--panel);opacity:.85;padding:0 2px;border-radius:2px;}
+.pr-y.hi{top:0;}
+.pr-y.lo{bottom:4px;}
+.pr-chart-box.pr-ml{height:54px;}
+.pr-seg{display:flex;border:1px solid var(--hairline);border-radius:var(--radius);overflow:hidden;}
+.pr-seg button{background:none;border:none;color:var(--text-dim);font-size:11.5px;padding:5px 10px;cursor:pointer;font-family:var(--font-body);}
+.pr-seg button.on{background:var(--accent-soft);color:var(--accent);font-weight:600;}
+.pr-feed{max-height:560px;overflow-y:auto;display:flex;flex-direction:column;gap:7px;}
+.pr-item{border:1px solid var(--hairline);border-left:3px solid var(--sev-c);border-radius:var(--radius);padding:8px 10px;cursor:pointer;
+  background:var(--bg-raised);}
+.pr-item:hover{background:var(--panel-2);}
+.pr-item.muted{opacity:.72;}
+.pr-item-hd{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.pr-item-t{font-size:12.5px;font-weight:600;flex:1;min-width:140px;}
+.pr-item-time{font-size:10.5px;color:var(--text-faint);}
+.pr-item-rc{font-size:11.5px;color:var(--text-dim);margin-top:5px;display:flex;gap:5px;align-items:flex-start;}
+.pr-item-rc svg{flex:none;margin-top:2px;}
+.pr-item-meta{font-size:10.5px;color:var(--text-faint);margin-top:4px;}
+.pr-inject{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;}
+.pr-inject label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-dim);}
+.pr-quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;}
+.pr-sub{font-family:var(--font-display);font-size:13.5px;font-weight:600;margin-bottom:6px;}
+.pr-sub small{font-family:var(--font-body);font-weight:400;font-size:10.5px;color:var(--text-faint);}
+.pr-sum-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+@media(max-width:760px){.pr-sum-grid{grid-template-columns:1fr;}}
+.pr-fun{display:grid;grid-template-columns:118px 1fr 62px;align-items:center;gap:8px;font-size:11.5px;color:var(--text-dim);margin:4px 0;}
+.pr-fun b{text-align:right;color:var(--text);font-weight:600;}
+.pr-fun-bar{height:8px;background:var(--hairline-soft);border-radius:4px;overflow:hidden;}
+.pr-fun-bar i{display:block;height:100%;border-radius:4px;}
+table.pr-mini td,table.pr-mini th{padding:5px 6px;font-size:11.5px;}
+.pr-rc{border:1px solid var(--hairline);background:var(--bg-raised);border-radius:var(--radius);padding:10px 12px;font-size:12.5px;line-height:1.45;}
+.pr-rc div{color:var(--text-dim);margin-top:3px;}
+.pr-ev{font-size:11.5px;}
+.pr-expl{font-size:11.5px;color:var(--text-faint);margin-top:8px;line-height:1.45;}
+.pr-fb{display:flex;gap:6px;flex-wrap:wrap;}
+.pr-learned .kv-row{font-size:12px;}
+.pr-learned small{font-size:10.5px;}
+</style>
+</head>
+<body>
+
+<div id="login-screen"></div>
+<div id="app"></div>
+
+<script>
+/* ============================================================
+   ARK SHIELD — data model, seed data, risk engine, simulation
+   ============================================================ */
+
+/* ---------- tiny utils ---------- */
+function uid(prefix){ return prefix + '-' + Math.random().toString(36).slice(2,8); }
+function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+function rand(min,max){ return min + Math.random()*(max-min); }
+function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+function dist2(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
+function pad2(n){ return n<10 ? '0'+n : ''+n; }
+function fmtClock(d){ return pad2(d.getHours())+':'+pad2(d.getMinutes())+':'+pad2(d.getSeconds()); }
+function fmtDateTime(d){ return d.toLocaleDateString(undefined,{month:'short',day:'numeric'}) + ' ' + fmtClock(d); }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function pointInRect(p, r){ return p.x>=r.x && p.x<=r.x+r.w && p.y>=r.y && p.y<=r.y+r.h; }
+
+const METERS_PER_UNIT = 0.072; // conceptual map scale
+function metersBetween(a,b){ return dist2(a,b) * METERS_PER_UNIT; }
+
+/* ---------- static reference data ---------- */
+const ROLES = [
+  {id:'SUPER_ADMIN', label:'Super Admin', desc:'Full platform access'},
+  {id:'SAFETY_MANAGER', label:'Safety Manager', desc:'Safety, alerts, zones, analytics'},
+  {id:'FLEET_MANAGER', label:'Fleet Manager', desc:'Fleet, operators, maintenance'},
+  {id:'SUPERVISOR', label:'Supervisor', desc:'Operational monitoring'},
+  {id:'OPERATOR', label:'Operator', desc:'Assigned forklift & safety info'},
+  {id:'VIEWER', label:'Viewer', desc:'Read-only access'},
+];
+
+const NAV_ITEMS = [
+  {id:'overview', label:'Overview', icon:'grid', roles:['SUPER_ADMIN','SAFETY_MANAGER','FLEET_MANAGER','SUPERVISOR','OPERATOR','VIEWER']},
+  {id:'vision', label:'ARK Vision', icon:'eye', roles:['SUPER_ADMIN','SAFETY_MANAGER','SUPERVISOR','OPERATOR','VIEWER']},
+  {id:'proximity', label:'ARK Proximity', icon:'radar', roles:['SUPER_ADMIN','SAFETY_MANAGER','SUPERVISOR','VIEWER']},
+  {id:'fleet', label:'ARK Fleet', icon:'truck', roles:['SUPER_ADMIN','FLEET_MANAGER','SUPERVISOR','VIEWER']},
+  {id:'livemap', label:'Live Map', icon:'map', roles:['SUPER_ADMIN','SAFETY_MANAGER','FLEET_MANAGER','SUPERVISOR','VIEWER']},
+  {id:'events', label:'Safety Events', icon:'shield', roles:['SUPER_ADMIN','SAFETY_MANAGER','FLEET_MANAGER','SUPERVISOR','VIEWER']},
+  {id:'alerts', label:'Alerts', icon:'bell', roles:['SUPER_ADMIN','SAFETY_MANAGER','FLEET_MANAGER','SUPERVISOR','OPERATOR','VIEWER']},
+  {id:'analytics', label:'Analytics', icon:'chart', roles:['SUPER_ADMIN','SAFETY_MANAGER','FLEET_MANAGER','VIEWER']},
+  {id:'operators', label:'Operators', icon:'user', roles:['SUPER_ADMIN','FLEET_MANAGER','SAFETY_MANAGER','SUPERVISOR']},
+  {id:'devices', label:'Devices', icon:'cpu', roles:['SUPER_ADMIN','SAFETY_MANAGER','FLEET_MANAGER']},
+  {id:'zones', label:'Zones', icon:'layers', roles:['SUPER_ADMIN','SAFETY_MANAGER']},
+  {id:'maintenance', label:'Maintenance', icon:'wrench', roles:['SUPER_ADMIN','FLEET_MANAGER']},
+  {id:'predict', label:'ARK Predict', icon:'brain', roles:['SUPER_ADMIN','SAFETY_MANAGER','FLEET_MANAGER']},
+  {id:'settings', label:'Settings', icon:'settings', roles:['SUPER_ADMIN']},
+];
+
+function canEdit(role){ return ['SUPER_ADMIN','SAFETY_MANAGER','FLEET_MANAGER'].includes(role); }
+function canAckAlerts(role){ return ['SUPER_ADMIN','SAFETY_MANAGER','FLEET_MANAGER','SUPERVISOR'].includes(role); }
+
+/* ---------- zones (fixed map layout, viewBox 0 0 1000 560) ---------- */
+function seedZones(){
+  return [
+    {id:'loading', name:'Loading Bay', kind:'Loading Area', x:20,y:20,w:250,h:170, severity:'amber', speedLimit:8},
+    {id:'wh-a', name:'Warehouse A', kind:'Storage / Rack Area', x:300,y:20,w:330,h:250, severity:'green', speedLimit:10},
+    {id:'wh-b', name:'Warehouse B', kind:'Storage / Rack Area', x:300,y:290,w:330,h:250, severity:'green', speedLimit:10},
+    {id:'charging', name:'Charging Station', kind:'Charging Area', x:660,y:20,w:150,h:120, severity:'green', speedLimit:5},
+    {id:'restricted', name:'Restricted Maintenance Area', kind:'Restricted Zone', x:660,y:160,w:150,h:120, severity:'red', speedLimit:0},
+  ];
+}
+
+function seedAnchors(){
+  return [
+    {id:'ANCH-01', x:60,y:50}, {id:'ANCH-02', x:520,y:40}, {id:'ANCH-03', x:520,y:280},
+    {id:'ANCH-04', x:520,y:520}, {id:'ANCH-05', x:730,y:60}, {id:'ANCH-06', x:900,y:460},
+  ];
+}
+
+function seedOperators(){
+  return [
+    {id:'OP-001', name:'Daniel Osei', status:'AUTHORIZED', training:'CURRENT', forklift:'ARK-F001', hours:1840, events:2, lastActive:'Active now'},
+    {id:'OP-002', name:'Priya Nandakumar', status:'AUTHORIZED', training:'CURRENT', forklift:'ARK-F002', hours:2210, events:0, lastActive:'Active now'},
+    {id:'OP-003', name:'Marcus Webb', status:'AUTHORIZED', training:'DUE FOR RENEWAL', forklift:'ARK-F003', hours:1590, events:4, lastActive:'Active now'},
+    {id:'OP-004', name:'Elena Cruz', status:'AUTHORIZED', training:'CURRENT', forklift:'ARK-F004', hours:980, events:1, lastActive:'22 min ago'},
+    {id:'OP-005', name:'Sam Whitfield', status:'SUSPENDED', training:'EXPIRED', forklift:null, hours:410, events:6, lastActive:'2 days ago'},
+  ];
+}
+
+function seedForklifts(){
+  return [
+    {id:'ARK-F001', asset:'FE-10231', manufacturer:'Hyster', model:'H50FT', type:'Internal Combustion',
+     capacity:'5,000 lb', status:'ACTIVE', operator:'OP-001', hours:4821, fuel:68, battery:null,
+     lastService:'2026-08-02', nextService:'2026-11-02', x:80,y:100, camera:'CAM-01',
+     route:[{x:80,y:100},{x:300,y:100},{x:520,y:140}], routeIdx:0, dir:1, speedKmh:0, riskScore:4, riskState:'LOW', proxState:'SAFE'},
+    {id:'ARK-F002', asset:'FE-10232', manufacturer:'Toyota', model:'8FBE20', type:'Electric',
+     capacity:'4,000 lb', status:'ACTIVE', operator:'OP-002', hours:3190, fuel:null, battery:74,
+     lastService:'2026-07-18', nextService:'2026-10-18', x:450,y:150, camera:'CAM-02',
+     route:[{x:450,y:150},{x:450,y:290},{x:450,y:430}], routeIdx:0, dir:1, speedKmh:0, riskScore:6, riskState:'LOW', proxState:'SAFE'},
+    {id:'ARK-F003', asset:'FE-10233', manufacturer:'Crown', model:'FC 5200', type:'Electric',
+     capacity:'4,500 lb', status:'ACTIVE', operator:'OP-003', hours:2765, fuel:null, battery:55,
+     lastService:'2026-08-21', nextService:'2026-11-21', x:420,y:420, camera:'CAM-03',
+     route:[{x:420,y:420},{x:160,y:420},{x:160,y:110}], routeIdx:0, dir:1, speedKmh:0, riskScore:9, riskState:'LOW', proxState:'SAFE'},
+    {id:'ARK-F004', asset:'FE-10234', manufacturer:'Crown', model:'RC 5500', type:'Electric',
+     capacity:'5,000 lb', status:'CHARGING', operator:'OP-004', hours:2004, fuel:null, battery:32,
+     lastService:'2026-06-30', nextService:'2026-09-30', x:735,y:80, camera:'CAM-04',
+     route:[{x:735,y:80},{x:700,y:80},{x:450,y:150}], routeIdx:0, dir:1, speedKmh:0, riskScore:0, riskState:'LOW', proxState:'SAFE'},
+    {id:'ARK-F005', asset:'FE-10235', manufacturer:'Hyster', model:'H50FT', type:'Internal Combustion',
+     capacity:'5,000 lb', status:'OFFLINE', operator:null, hours:5510, fuel:40, battery:null,
+     lastService:'2026-05-14', nextService:'2026-08-14 (overdue)', x:900,y:480, camera:'CAM-05',
+     route:[{x:900,y:480},{x:800,y:280},{x:700,y:220}], routeIdx:0, dir:1, speedKmh:0, riskScore:0, riskState:'LOW', proxState:'SAFE'},
+  ];
+}
+
+function seedCameras(forklifts){
+  return forklifts.map(f => ({id:f.camera, mount:'Forklift-mounted', forklift:f.id, status: f.status==='OFFLINE' ? 'OFFLINE':'ONLINE'}));
+}
+
+function seedWorkers(){
+  const out = [];
+  for(let i=1;i<=8;i++){
+    out.push({
+      id:'W-'+pad2(i), tag:'TAG-40'+(i+10),
+      x: rand(80,920), y: rand(60,500), vx:0, vy:0,
+    });
+  }
+  return out;
+}
+
+function seedMaintenance(){
+  return [
+    {id:uid('MR'), forklift:'ARK-F001', type:'Scheduled Service', date:'2026-08-02', notes:'250-hr service, hydraulic fluid, filters', status:'COMPLETE'},
+    {id:uid('MR'), forklift:'ARK-F002', type:'Tire Replacement', date:'2026-07-18', notes:'Front load wheels replaced', status:'COMPLETE'},
+    {id:uid('MR'), forklift:'ARK-F003', type:'Scheduled Service', date:'2026-08-21', notes:'500-hr service', status:'COMPLETE'},
+    {id:uid('MR'), forklift:'ARK-F004', type:'Battery Inspection', date:'2026-06-30', notes:'Cell voltage check, terminals cleaned', status:'COMPLETE'},
+    {id:uid('MR'), forklift:'ARK-F005', type:'Scheduled Service', date:'2026-08-14', notes:'750-hr service — overdue, forklift taken offline', status:'OVERDUE'},
+  ];
+}
+
+/* ---------- risk engine ----------
+   Conceptual demo model only — NOT a scientifically validated
+   collision-prediction system. See ARK Predict for the future
+   trained-model track. */
+const RISK_BANDS = [
+  {max:29, key:'LOW', color:'--safe'},
+  {max:59, key:'CAUTION', color:'--warn'},
+  {max:79, key:'HIGH', color:'--high'},
+  {max:100, key:'CRITICAL', color:'--danger'},
+];
+function riskStateFor(score){
+  for(const b of RISK_BANDS){ if(score<=b.max) return b.key; }
+  return 'CRITICAL';
+}
+function riskColorVar(state){
+  return state==='LOW' ? '--safe' : state==='CAUTION' ? '--warn' : state==='HIGH' ? '--high' : '--danger';
+}
+function computeRisk({distanceM, zoneSeverity, converging, objectType}){
+  let distanceFactor;
+  if(distanceM<=3) distanceFactor=45;
+  else if(distanceM<=6) distanceFactor=34;
+  else if(distanceM<=8) distanceFactor=26;
+  else if(distanceM<=12) distanceFactor=16;
+  else if(distanceM<=18) distanceFactor=6;
+  else distanceFactor=0;
+  const speedFactor = Math.round(rand(2,9));
+  const trajectoryFactor = converging ? 12 : 0;
+  const zoneFactor = zoneSeverity==='red' ? 18 : zoneSeverity==='amber' ? 9 : 0;
+  const objectTypeFactor = objectType==='pedestrian' ? 12 : objectType==='vehicle' ? 6 : 0;
+  const score = clamp(distanceFactor+speedFactor+trajectoryFactor+zoneFactor+objectTypeFactor, 0, 100);
+  return {score, distanceFactor, speedFactor, trajectoryFactor, zoneFactor, objectTypeFactor};
+}
+function proximityStateFor(distanceM, thresholds){
+  if(distanceM >= thresholds.safe) return 'SAFE';
+  if(distanceM >= thresholds.warning) return 'WARNING';
+  return 'DANGER';
+}
+const PROX_RANK = {SAFE:0, WARNING:1, DANGER:2};
+
+function zoneAt(point, zones){
+  for(const z of zones){ if(pointInRect(point, z)) return z; }
+  return null;
+}
+/* ============================================================
+   ARK SHIELD — application state + simulation engine
+   ============================================================ */
+
+const state = {
+  auth: {loggedIn:false, name:'', role:null},
+  theme: 'dark',
+  org: {name:'Meridian Logistics Group', site:'Riverside Distribution Site', warehouse:'Warehouse 4 — Riverside DC'},
+  sim: {running:false, tick:0, traffic:1, timer:null},
+  thresholds: {safe:15, warning:8},
+  zones: seedZones(),
+  anchors: seedAnchors(),
+  operators: seedOperators(),
+  forklifts: seedForklifts(),
+  workers: seedWorkers(),
+  maintenance: seedMaintenance(),
+  events: [],
+  alerts: [],
+  systemHealth: [
+    {id:'ai', label:'AI Inference Service', status:'ONLINE', simulated:true},
+    {id:'cam', label:'Camera Connectivity', status:'ONLINE', simulated:true},
+    {id:'uwbgw', label:'UWB Gateway', status:'ONLINE', simulated:true},
+    {id:'uwbanchors', label:'UWB Anchors', status:'ONLINE', simulated:true},
+    {id:'db', label:'Database', status:'ONLINE', simulated:false},
+    {id:'rt', label:'Real-Time Connection', status:'ONLINE', simulated:false},
+    {id:'telemetry', label:'Fleet Telemetry', status:'ONLINE', simulated:true},
+  ],
+  activeView:'overview',
+  drawer:{open:false, type:null, id:null},
+  eventFilters:{severity:'ALL', type:'ALL', range:'today'},
+  charts:{},
+  toastSeq:0,
+  lastAlertTickByKey:{},
+  visionForkliftId:null,
+};
+state.cameras = seedCameras(state.forklifts);
+
+/* Prime a few historical events/alerts so the app doesn't look empty on first load */
+(function primeHistory(){
+  const now = Date.now();
+  const sevs=['LOW','MEDIUM','HIGH'];
+  const types=['PEDESTRIAN PROXIMITY','SPEED VIOLATION','COLLISION RISK'];
+  for(let i=0;i<6;i++){
+    const f = pick(state.forklifts);
+    const sev = pick(sevs);
+    state.events.push({
+      id: uid('EVT'), ts: now - rand(6,90)*60000, type: pick(types), severity: sev,
+      forklift: f.id, operator: f.operator, zone: pick(state.zones).name,
+      object: 'Pedestrian', distance: (rand(3,16)).toFixed(1), risk: Math.round(rand(20,70)),
+      source: 'ARK Proximity', status:'REVIEWED',
+    });
+  }
+  state.events.sort((a,b)=>b.ts-a.ts);
+})();
+
+/* ---------- alert / event creation ---------- */
+function pushToast(sevKey, title, msg){
+  const id = ++state.toastSeq;
+  const t = {id, sevKey, title, msg};
+  const stack = document.getElementById('toast-stack');
+  if(!stack) return;
+  const el = document.createElement('div');
+  el.className='toast'; el.style.setProperty('--sev-c', sevColor(sevKey));
+  el.innerHTML = `<b>${escapeHtml(title)}</b>${escapeHtml(msg)}`;
+  stack.appendChild(el);
+  setTimeout(()=>{ el.style.transition='opacity .3s'; el.style.opacity='0'; setTimeout(()=>el.remove(),320); }, 5200);
+}
+function sevColor(sevKey){
+  const map={LOW:'--safe',INFO:'--info',MEDIUM:'--warn',WARNING:'--warn',HIGH:'--danger',CRITICAL:'--danger',SAFE:'--safe'};
+  const v = map[sevKey] || '--accent';
+  return getComputedStyle(document.documentElement).getPropertyValue(v).trim() || '#4E8CFF';
+}
+
+function logEvent({type, severity, forklift, zone, object, distance, risk, source}){
+  const f = state.forklifts.find(x=>x.id===forklift);
+  const ev = {
+    id: uid('EVT'), ts: Date.now(), type, severity,
+    forklift, operator: f ? f.operator : null, zone, object, distance, risk, source,
+    status:'OPEN',
+  };
+  state.events.unshift(ev);
+  if(state.events.length>400) state.events.length=400;
+  return ev;
+}
+function createAlert({severity, title, forklift, worker, distance, risk, zone, type}){
+  const al = {
+    id: uid('ALT'), ts: Date.now(), severity, title, forklift, worker, distance, risk, zone, type,
+    status:'ACTIVE',
+  };
+  state.alerts.unshift(al);
+  if(state.alerts.length>200) state.alerts.length=200;
+  pushToast(severity, title, `${forklift}${worker ? ' · nearest '+worker : ''}${distance!=null ? ' · '+distance+'m' : ''}`);
+  return al;
+}
+function activeAlertsFor(forkliftId){
+  return state.alerts.filter(a=>a.forklift===forkliftId && a.status==='ACTIVE');
+}
+function resolveProximityAlerts(forkliftId){
+  state.alerts.forEach(a=>{
+    if(a.forklift===forkliftId && a.type==='PROXIMITY' && a.status==='ACTIVE'){ a.status='RESOLVED'; }
+  });
+}
+function cooldownOk(key, ticks){
+  const last = state.lastAlertTickByKey[key] || -999;
+  if(state.sim.tick - last < ticks) return false;
+  state.lastAlertTickByKey[key] = state.sim.tick;
+  return true;
+}
+
+/* ---------- movement ---------- */
+function stepForklift(f){
+  const statusMoves = f.status==='ACTIVE';
+  if(!statusMoves){
+    f.speedKmh = f.status==='CHARGING' ? 0 : 0;
+    if(f.status==='CHARGING' && f.battery!=null) f.battery = clamp(f.battery + 0.15, 0, 100);
+    return;
+  }
+  const zone = zoneAt(f, state.zones);
+  const limit = zone ? zone.speedLimit : 12;
+  const base = 7 + state.sim.traffic*1.6;
+  f.speedKmh = clamp(base + rand(-2.2,3.4), 0, 16);
+  // occasional speed violation, tied to actual zone limit
+  if(zone && limit>0 && f.speedKmh > limit + 1.5){
+    if(cooldownOk('speed:'+f.id, 22)){
+      const ev = logEvent({type:'SPEED VIOLATION', severity:'MEDIUM', forklift:f.id, zone:zone.name,
+        object:'—', distance:'—', risk: Math.round(rand(35,55)), source:'ARK Fleet'});
+      createAlert({severity:'MEDIUM', title:'SPEED VIOLATION', forklift:f.id, distance:null,
+        risk: ev.risk, zone: zone.name, type:'SPEED'});
+    }
+  }
+  const target = f.route[f.routeIdx];
+  const dx = target.x-f.x, dy = target.y-f.y;
+  const d = Math.hypot(dx,dy);
+  const step = 3.2 + state.sim.traffic*0.9;
+  if(d < step){
+    f.x = target.x; f.y = target.y;
+    f.routeIdx += f.dir;
+    if(f.routeIdx>=f.route.length){ f.routeIdx=f.route.length-2; f.dir=-1; }
+    if(f.routeIdx<0){ f.routeIdx=1; f.dir=1; }
+  } else {
+    f.x += (dx/d)*step; f.y += (dy/d)*step;
+  }
+  if(f.fuel!=null) f.fuel = clamp(f.fuel - 0.02, 0, 100);
+  if(f.battery!=null) f.battery = clamp(f.battery - 0.05, 0, 100);
+  f.hours += (0.8/3600);
+}
+
+function stepWorker(w){
+  const restricted = state.zones.find(z=>z.id==='restricted');
+  const tempted = Math.random() < (0.01 + state.sim.traffic*0.006);
+  let tx = w.x + rand(-1,1)*22, ty = w.y + rand(-1,1)*22;
+  if(restricted && !tempted && pointInRect({x:tx,y:ty}, inflate(restricted,30))){
+    // repel away from restricted zone under normal conditions
+    const cx = restricted.x+restricted.w/2, cy = restricted.y+restricted.h/2;
+    tx = w.x + (w.x-cx)*0.08; ty = w.y + (w.y-cy)*0.08;
+  }
+  w.x = clamp(tx, 30, 970); w.y = clamp(ty, 30, 530);
+}
+function inflate(r, n){ return {x:r.x-n,y:r.y-n,w:r.w+2*n,h:r.h+2*n}; }
+
+function nearestWorker(f){
+  let best=null, bd=Infinity;
+  for(const w of state.workers){
+    const dm = metersBetween(f, w);
+    if(dm<bd){ bd=dm; best=w; }
+  }
+  return {worker:best, distanceM:bd};
+}
+function nearestForklift(f){
+  let best=null, bd=Infinity;
+  for(const o of state.forklifts){
+    if(o.id===f.id || o.status!=='ACTIVE') continue;
+    const dm = metersBetween(f,o);
+    if(dm<bd){ bd=dm; best=o; }
+  }
+  return {forklift:best, distanceM:bd};
+}
+
+/* ---------- main tick ---------- */
+function simTick(){
+  state.sim.tick++;
+  state.forklifts.forEach(stepForklift);
+  state.workers.forEach(stepWorker);
+
+  state.forklifts.forEach(f=>{
+    if(f.status!=='ACTIVE'){ f.riskScore=0; f.riskState='LOW'; f.proxState='SAFE'; f._nearestWorker=null; f._nearestDist=null; return; }
+    const {worker, distanceM} = nearestWorker(f);
+    const zone = zoneAt(f, state.zones);
+    const prevDist = f._nearestDist;
+    const converging = prevDist!=null && distanceM < prevDist - 0.05;
+    const risk = computeRisk({distanceM, zoneSeverity: zone?zone.severity:'green', converging, objectType:'pedestrian'});
+    f.riskScore = Math.round(risk.score);
+    f.riskState = riskStateFor(f.riskScore);
+    f._nearestWorker = worker ? worker.id : null;
+    f._nearestDist = distanceM;
+    f._zone = zone ? zone.name : 'Open Floor';
+    f._converging = converging;
+
+    const newProx = proximityStateFor(distanceM, state.thresholds);
+    const oldRank = PROX_RANK[f.proxState] ?? 0, newRank = PROX_RANK[newProx];
+    if(newRank > oldRank){
+      const key = 'prox:'+f.id;
+      if(cooldownOk(key, 10)){
+        const sev = newProx==='DANGER' ? 'CRITICAL' : 'MEDIUM';
+        const title = newProx==='DANGER' ? 'DANGER — PEDESTRIAN TOO CLOSE' : 'PROXIMITY WARNING';
+        logEvent({type:'PEDESTRIAN PROXIMITY', severity:sev, forklift:f.id, zone:f._zone,
+          object: worker?worker.id:'Pedestrian', distance:distanceM.toFixed(1), risk:f.riskScore, source:'ARK Proximity'});
+        createAlert({severity:sev, title, forklift:f.id, worker:worker?worker.id:null,
+          distance:distanceM.toFixed(1), risk:f.riskScore, zone:f._zone, type:'PROXIMITY'});
+      }
+    } else if(newProx==='SAFE' && oldRank>0){
+      resolveProximityAlerts(f.id);
+    }
+    f.proxState = newProx;
+
+    if((f.riskState==='HIGH' || f.riskState==='CRITICAL')){
+      const key='vision:'+f.id;
+      if(cooldownOk(key, 14)){
+        const sev = f.riskState==='CRITICAL' ? 'CRITICAL':'HIGH';
+        logEvent({type:'COLLISION RISK', severity:sev, forklift:f.id, zone:f._zone,
+          object: worker?worker.id:'Pedestrian', distance:distanceM.toFixed(1), risk:f.riskScore, source:'ARK Vision'});
+        if(f.riskState==='CRITICAL'){
+          createAlert({severity:'CRITICAL', title:'CRITICAL COLLISION RISK', forklift:f.id, worker:worker?worker.id:null,
+            distance:distanceM.toFixed(1), risk:f.riskScore, zone:f._zone, type:'VISION'});
+          pushToast('CRITICAL','DEMO ONLY — Simulated audible + strobe warning triggered', f.id);
+        }
+      }
+    }
+  });
+
+  // rare grounded flavor events
+  maybeUnauthorizedOperation();
+  maybeSystemHealthBlip();
+
+  renderLiveWidgets();
+  if(document.body.contains(document.getElementById('view-root'))){
+    renderCurrentView(true);
+  }
+}
+function maybeUnauthorizedOperation(){
+  if(Math.random() > 0.006) return;
+  const op = state.operators.find(o=>o.status==='SUSPENDED' || o.training==='EXPIRED' || o.training==='DUE FOR RENEWAL');
+  if(!op || !op.forklift) return;
+  if(!cooldownOk('unauth:'+op.id, 200)) return;
+  logEvent({type:'UNAUTHORIZED OPERATION', severity:'MEDIUM', forklift:op.forklift, zone:'—',
+    object:op.id, distance:'—', risk: Math.round(rand(30,50)), source:'ARK Fleet'});
+  createAlert({severity:'MEDIUM', title:'UNAUTHORIZED OPERATION', forklift:op.forklift, distance:null,
+    risk:null, zone:null, type:'AUTH'});
+}
+function maybeSystemHealthBlip(){
+  if(Math.random() > 0.004) return;
+  const cand = state.systemHealth.find(h=>h.simulated && h.status==='ONLINE');
+  if(!cand) return;
+  cand.status='DEGRADED';
+  logEvent({type: cand.id==='cam' ? 'CAMERA ALERT':'UWB ALERT', severity:'LOW', forklift:'—', zone:'—',
+    object:cand.label, distance:'—', risk:null, source:'System'});
+  setTimeout(()=>{ cand.status='ONLINE'; }, 9000);
+}
+
+/* ---------- simulation controls ---------- */
+function startSim(){
+  if(state.sim.running) return;
+  state.sim.running = true;
+  state.sim.timer = setInterval(simTick, 850);
+  updateSimIndicator();
+}
+function pauseSim(){
+  state.sim.running = false;
+  clearInterval(state.sim.timer);
+  updateSimIndicator();
+}
+function resetSim(){
+  pauseSim();
+  state.zones = seedZones();
+  state.anchors = seedAnchors();
+  state.forklifts = seedForklifts();
+  state.workers = seedWorkers();
+  state.cameras = seedCameras(state.forklifts);
+  state.events = [];
+  state.alerts = [];
+  state.sim.tick = 0;
+  state.sim.traffic = 1;
+  state.lastAlertTickByKey = {};
+  state.systemHealth.forEach(h=>h.status='ONLINE');
+  renderLiveWidgets();
+  renderCurrentView(true);
+  pushToast('INFO','Simulation reset','All positions and history cleared');
+}
+function increaseTraffic(){
+  state.sim.traffic = clamp(state.sim.traffic+1, 1, 3);
+  if(state.sim.traffic>=2){
+    const f4 = state.forklifts.find(x=>x.id==='ARK-F004');
+    if(f4 && f4.status==='CHARGING' && f4.battery>45){ f4.status='ACTIVE'; }
+  }
+  if(state.sim.traffic>=3){
+    const f5 = state.forklifts.find(x=>x.id==='ARK-F005');
+    if(f5 && f5.status==='OFFLINE'){ f5.status='ACTIVE'; f5.operator='OP-004'; }
+  }
+  if(state.workers.length<12){ state.workers.push(...seedWorkers().slice(0,2).map(w=>({...w,id:'W-'+pad2(state.workers.length+1),tag:'TAG-'+(5000+state.workers.length)}))); }
+  pushToast('INFO','Traffic increased', 'Level '+state.sim.traffic+' of 3');
+  renderCurrentView(true);
+}
+function triggerWarning(){
+  const f = state.forklifts.find(x=>x.status==='ACTIVE') || state.forklifts[0];
+  if(!f) return;
+  const w = state.workers[0];
+  w.x = f.x + rand(-1,1)*80; w.y = f.y + rand(-1,1)*80;
+  state.lastAlertTickByKey['prox:'+f.id] = -999;
+  const dm = 10.5;
+  logEvent({type:'PEDESTRIAN PROXIMITY', severity:'MEDIUM', forklift:f.id, zone:f._zone||'Open Floor',
+    object:w.id, distance:dm.toFixed(1), risk:52, source:'ARK Proximity'});
+  createAlert({severity:'MEDIUM', title:'PROXIMITY WARNING', forklift:f.id, worker:w.id,
+    distance:dm.toFixed(1), risk:52, zone:f._zone||'Open Floor', type:'PROXIMITY'});
+  f.proxState='WARNING'; f.riskScore=Math.max(f.riskScore,52); f.riskState='CAUTION';
+  renderCurrentView(true);
+}
+function triggerCritical(){
+  const f = state.forklifts.find(x=>x.status==='ACTIVE') || state.forklifts[0];
+  if(!f) return;
+  const w = state.workers[1] || state.workers[0];
+  w.x = f.x + rand(-1,1)*18; w.y = f.y + rand(-1,1)*18;
+  state.lastAlertTickByKey['prox:'+f.id] = -999;
+  state.lastAlertTickByKey['vision:'+f.id] = -999;
+  const dm = 3.2;
+  const useImpactLabel = Math.random()<0.3;
+  logEvent({type: useImpactLabel?'IMPACT':'PEDESTRIAN PROXIMITY', severity:'CRITICAL', forklift:f.id, zone:f._zone||'Open Floor',
+    object:w.id, distance:dm.toFixed(1), risk:93, source:'ARK Vision'});
+  createAlert({severity:'CRITICAL', title: useImpactLabel? 'IMPACT — DEMO ONLY':'DANGER — PEDESTRIAN TOO CLOSE', forklift:f.id, worker:w.id,
+    distance:dm.toFixed(1), risk:93, zone:f._zone||'Open Floor', type:'PROXIMITY'});
+  pushToast('CRITICAL','DEMO ONLY — Simulated emergency stop signal sent', f.id);
+  f.proxState='DANGER'; f.riskScore=93; f.riskState='CRITICAL';
+  renderCurrentView(true);
+}
+/* ============================================================
+   ARK SHIELD — icons, shell, navigation
+   ============================================================ */
+const ICONS = {
+  grid:'<rect x="2" y="2" width="6" height="6" rx="1"/><rect x="10" y="2" width="6" height="6" rx="1"/><rect x="2" y="10" width="6" height="6" rx="1"/><rect x="10" y="10" width="6" height="6" rx="1"/>',
+  eye:'<path d="M1.5 9C3 5.5 6 3.5 9 3.5S15 5.5 16.5 9c-1.5 3.5-4.5 5.5-7.5 5.5S3 12.5 1.5 9Z"/><circle cx="9" cy="9" r="2.3"/>',
+  radar:'<circle cx="9" cy="9" r="7"/><circle cx="9" cy="9" r="4"/><circle cx="9" cy="9" r="1.1" fill="currentColor" stroke="none"/><path d="M9 9 L14.5 4.5" />',
+  truck:'<rect x="1.5" y="6" width="9" height="6" rx="1"/><path d="M10.5 8h3.2l2.3 2.5V12h-5.5z"/><circle cx="4.5" cy="13.5" r="1.4"/><circle cx="13" cy="13.5" r="1.4"/>',
+  map:'<path d="M2 4.5 6.5 3l5 1.5L16 3v10.5l-4.5 1.5-5-1.5L2 15Z"/><path d="M6.5 3v10.5M11.5 4.5V15"/>',
+  shield:'<path d="M9 2 15 4v4.5c0 4-2.5 6.5-6 7.5-3.5-1-6-3.5-6-7.5V4Z"/>',
+  bell:'<path d="M5 7.2a4 4 0 0 1 8 0c0 3.4 1.2 4.4 1.2 4.4H3.8S5 10.6 5 7.2Z"/><path d="M7.4 14a1.7 1.7 0 0 0 3.2 0"/>',
+  chart:'<path d="M2 15.5V2.5M2 15.5h14"/><rect x="4.3" y="9.5" width="2.4" height="4.5"/><rect x="8.2" y="6" width="2.4" height="8"/><rect x="12.1" y="3.5" width="2.4" height="10.5"/>',
+  user:'<circle cx="9" cy="6" r="3"/><path d="M2.8 15.5c.6-3 3-5 6.2-5s5.6 2 6.2 5"/>',
+  cpu:'<rect x="4.5" y="4.5" width="9" height="9" rx="1"/><rect x="7.3" y="7.3" width="3.4" height="3.4"/><path d="M9 1.5v2M9 14.5v2M1.5 9h2M14.5 9h2M4 4l1.4 1.4M14 4l-1.4 1.4M4 14l1.4-1.4M14 14l-1.4-1.4"/>',
+  layers:'<path d="M9 2 16 6l-7 4-7-4Z"/><path d="M2 10l7 4 7-4"/>',
+  wrench:'<path d="M12.7 3a3.6 3.6 0 0 0-4.9 4.2L2.5 12.5l2 2 5.3-5.3A3.6 3.6 0 0 0 14 5.3Z"/>',
+  brain:'<path d="M6.5 3a2.6 2.6 0 0 0-2.5 3.2A2.6 2.6 0 0 0 3 10.6a2.6 2.6 0 0 0 2.4 3.9c.4.9 1.3 1.5 2.3 1.5V3.3A2.6 2.6 0 0 0 6.5 3Z"/><path d="M11.5 3a2.6 2.6 0 0 1 2.5 3.2A2.6 2.6 0 0 1 15 10.6a2.6 2.6 0 0 1-2.4 3.9c-.4.9-1.3 1.5-2.3 1.5V3.3A2.6 2.6 0 0 1 11.5 3Z"/>',
+  settings:'<circle cx="9" cy="9" r="2.6"/><path d="M9 2.5v2M9 13.5v2M2.5 9h2M13.5 9h2M4.4 4.4l1.4 1.4M12.2 12.2l1.4 1.4M13.6 4.4l-1.4 1.4M5.8 12.2l-1.4 1.4"/>',
+  menu:'<path d="M2.5 4.5h13M2.5 9h13M2.5 13.5h13"/>',
+  x:'<path d="M4 4l10 10M14 4 4 14"/>',
+  search:'<circle cx="8" cy="8" r="5"/><path d="m15 15-3.2-3.2"/>',
+  camera:'<rect x="1.5" y="5" width="15" height="10" rx="1.5"/><circle cx="9" cy="10" r="3"/><path d="M6.3 5 7.3 3h3.4l1 2"/>',
+  check:'<path d="M3.5 9.5 7 13l7.5-8"/>',
+  triangle:'<path d="M9 2.5 16.5 15.5h-15Z"/><path d="M9 7.5v3.2"/><circle cx="9" cy="12.7" r=".4" fill="currentColor"/>',
+  plus:'<path d="M9 2.5v13M2.5 9h13"/>',
+  arrow:'<path d="M4 9h10M10 5l4 4-4 4"/>',
+  battery:'<rect x="1.5" y="6" width="12" height="6" rx="1"/><rect x="14" y="8" width="2" height="2"/>',
+  fuel:'<path d="M4 15.5V4.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v11"/><path d="M2.5 15.5h9M10 6.5h1.6a1 1 0 0 1 1 1v4.3a1.2 1.2 0 0 0 2.4 0V7.5L13 5.5"/>',
+  clock:'<circle cx="9" cy="9" r="6.8"/><path d="M9 5.3V9l2.6 1.6"/>',
+};
+function icon(name, size){
+  size = size||16;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||''}</svg>`;
+}
+
+const TICK_RENDER_VIEWS = new Set(['overview','vision','proximity','fleet','livemap','alerts','events']);
+
+function roleLabel(id){ const r=ROLES.find(x=>x.id===id); return r?r.label:id; }
+function initials(name){ return name.split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase(); }
+
+function buildShell(){
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <aside class="sidebar" id="sidebar">
+      <div class="brand-row">
+        ${brandMark(22)}
+        <span class="brand-text">ARK<b>SHIELD</b></span>
+      </div>
+      <div class="sim-indicator" id="sim-indicator">
+        <span class="dot"></span><span class="lbl">SIMULATION MODE</span>
+        <div style="margin-top:4px;color:var(--text-faint)">All positions &amp; events are synthetic</div>
+      </div>
+      <nav class="nav" id="nav"></nav>
+      <div style="padding:10px 14px 16px;border-top:1px solid var(--hairline-soft);font-size:10.5px;color:var(--text-faint)">
+        ${state.org.warehouse}
+      </div>
+    </aside>
+    <div class="main">
+      <div class="topbar">
+        <button class="icon-btn menu-toggle" onclick="toggleSidebar()">${icon('menu',17)}</button>
+        <div class="org-select">
+          <select onchange="pushToast('INFO','Site switched', this.value)">
+            <option>${escapeHtml(state.org.site)}</option>
+          </select>
+          <span>›</span>
+          <select onchange="pushToast('INFO','Warehouse switched', this.value)">
+            <option>${escapeHtml(state.org.warehouse)}</option>
+          </select>
+        </div>
+        <div class="spacer"></div>
+        <button class="icon-btn" title="Toggle theme" onclick="toggleTheme()">${icon('settings',17)}</button>
+        <button class="icon-btn" title="Alerts" onclick="goTo('alerts')">
+          ${icon('bell',17)}<span class="abadge hidden" id="alert-badge">0</span>
+        </button>
+        <div class="profile-chip" onclick="logout()" title="Sign out">
+          <span class="av" id="profile-av"></span>
+          <span>
+            <span class="name" id="profile-name"></span>
+            <span class="role" id="profile-role"></span>
+          </span>
+        </div>
+      </div>
+      <div class="content" id="content">
+        <div id="view-root"></div>
+      </div>
+    </div>
+    <div class="drawer-scrim" id="drawer-scrim" onclick="closeDrawer()"></div>
+    <div class="detail-drawer" id="detail-drawer"></div>
+    <div class="toast-stack" id="toast-stack"></div>
+  `;
+  document.getElementById('profile-av').textContent = initials(state.auth.name||'U');
+  document.getElementById('profile-name').textContent = state.auth.name;
+  document.getElementById('profile-role').textContent = roleLabel(state.auth.role);
+  renderSidebarNav();
+}
+
+function brandMark(size){
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none">
+    <path d="M12 2 21 5.5V11c0 6-3.8 9.6-9 11-5.2-1.4-9-5-9-11V5.5Z" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.4"/>
+    <path d="M8.3 12.2 11 15l4.8-6" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+function renderSidebarNav(){
+  const nav = document.getElementById('nav');
+  const items = NAV_ITEMS.filter(n=>n.roles.includes(state.auth.role));
+  nav.innerHTML = items.map(n=>{
+    const badge = n.id==='alerts' ? `<span class="nbadge hidden" id="nav-alert-badge">0</span>` : '';
+    return `<div class="nav-item ${state.activeView===n.id?'active':''}" onclick="goTo('${n.id}')">
+      ${icon(n.icon,16)}<span>${n.label}</span>${badge}
+    </div>`;
+  }).join('');
+}
+
+function updateSimIndicator(){
+  const el = document.getElementById('sim-indicator');
+  if(!el) return;
+  el.classList.toggle('running', state.sim.running);
+  el.querySelector('.lbl').textContent = state.sim.running ? 'SIMULATION RUNNING' : 'SIMULATION PAUSED';
+}
+
+function renderLiveWidgets(){
+  const activeCount = state.alerts.filter(a=>a.status==='ACTIVE').length;
+  const badge = document.getElementById('alert-badge');
+  const navBadge = document.getElementById('nav-alert-badge');
+  [badge, navBadge].forEach(b=>{
+    if(!b) return;
+    if(activeCount>0){ b.textContent=activeCount; b.classList.remove('hidden'); }
+    else { b.classList.add('hidden'); }
+  });
+}
+
+function toggleSidebar(){ document.getElementById('sidebar').classList.toggle('open'); }
+function toggleTheme(){
+  const root = document.documentElement;
+  state.theme = state.theme==='dark' ? 'light' : 'dark';
+  if(state.theme==='light'){ root.setAttribute('data-theme','light'); } else { root.setAttribute('data-theme','dark'); }
+  renderCurrentView(true);
+}
+
+function goTo(viewId){
+  state.activeView = viewId;
+  document.getElementById('sidebar').classList.remove('open');
+  renderSidebarNav();
+  renderCurrentView(false);
+}
+
+function renderCurrentView(isTick){
+  if(isTick && !TICK_RENDER_VIEWS.has(state.activeView)) { renderLiveWidgets(); return; }
+  const root = document.getElementById('view-root');
+  if(!root) return;
+  const scrollY = root.scrollTop;
+  const renderers = {
+    overview: renderOverview, vision: renderVision, proximity: renderProximity,
+    fleet: renderFleet, livemap: renderLiveMap, events: renderEvents, alerts: renderAlerts,
+    analytics: renderAnalytics, operators: renderOperators, devices: renderDevices,
+    zones: renderZones, maintenance: renderMaintenance, predict: renderPredict, settings: renderSettings,
+  };
+  const fn = renderers[state.activeView] || renderOverview;
+  root.innerHTML = fn();
+  renderLiveWidgets();
+  if(!isTick) window.scrollTo(0,0);
+}
+/* ============================================================
+   ARK SHIELD — shared component helpers + map builder
+   ============================================================ */
+function cssVar(name){ return `var(${name})`; }
+
+function statTile(label, value, sub, colorVar){
+  return `<div class="stat-tile" style="--tile-c:${colorVar?cssVar(colorVar):'var(--hairline)'}">
+    <div class="lbl">${label}</div>
+    <div class="val">${value}</div>
+    ${sub? `<div class="sub">${sub}</div>`:''}
+  </div>`;
+}
+function badge(text, cls){ return `<span class="badge ${cls}">${text}</span>`; }
+function riskBadge(state){
+  const cls = state==='LOW'?'safe':state==='CAUTION'?'caution':state==='HIGH'?'high':'critical';
+  return badge(state, cls);
+}
+function proxBadge(state){
+  const cls = state==='SAFE'?'safe':state==='WARNING'?'warning':'danger';
+  return badge(state, cls);
+}
+function sevBadge(sev){
+  const cls = {LOW:'low',INFO:'info',MEDIUM:'medium',HIGH:'high',CRITICAL:'critical'}[sev] || 'info';
+  return badge(sev, cls);
+}
+function statusBadge(status){
+  const cls = {ACTIVE:'active',IDLE:'idle',CHARGING:'charging',MAINTENANCE:'maintenance',OFFLINE:'offline',
+    AUTHORIZED:'authorized',SUSPENDED:'unauthorized',CURRENT:'current','DUE FOR RENEWAL':'warning',EXPIRED:'unauthorized',
+    ONLINE:'online',DEGRADED:'degraded',OPEN:'warning',REVIEWED:'info',CLOSED:'resolved',ACKNOWLEDGED:'acknowledged',
+    RESOLVED:'resolved',COMPLETE:'active',OVERDUE:'critical'}[status] || 'info';
+  return badge(status, cls);
+}
+function panelHead(title, sub, right){
+  return `<div class="panel-head"><div class="panel-title">${title}${sub?`<small>${sub}</small>`:''}</div>${right||''}</div>`;
+}
+function emptyRow(colspan, text){
+  return `<tr class="empty-row"><td colspan="${colspan}">${text}</td></tr>`;
+}
+function timeAgo(ts){
+  const s = Math.round((Date.now()-ts)/1000);
+  if(s<60) return s+'s ago';
+  if(s<3600) return Math.round(s/60)+'m ago';
+  return Math.round(s/3600)+'h ago';
+}
+
+/* ---------- warehouse map ---------- */
+function buildWarehouseMapSVG(opts){
+  opts = Object.assign({showWorkers:true, showAnchors:false, showZoneLabels:true, interactive:true}, opts||{});
+  const zoneColor = z => z.severity==='red' ? 'var(--danger)' : z.severity==='amber' ? 'var(--warn)' : 'var(--safe)';
+  let s = `<svg viewBox="0 0 1000 560" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;display:block;">`;
+  s += `<rect x="0" y="0" width="1000" height="560" fill="var(--bg-raised)"/>`;
+  // faint grid
+  for(let gx=0; gx<=1000; gx+=40){ s += `<line x1="${gx}" y1="0" x2="${gx}" y2="560" stroke="var(--hairline-soft)" stroke-width="1"/>`; }
+  for(let gy=0; gy<=560; gy+=40){ s += `<line x1="0" y1="${gy}" x2="1000" y2="${gy}" stroke="var(--hairline-soft)" stroke-width="1"/>`; }
+  // zones
+  state.zones.forEach(z=>{
+    const c = zoneColor(z);
+    s += `<rect x="${z.x}" y="${z.y}" width="${z.w}" height="${z.h}" rx="6" fill="${c}" fill-opacity="0.08" stroke="${c}" stroke-width="1.4" stroke-dasharray="${z.severity==='red'?'5 4':'0'}"/>`;
+    if(opts.showZoneLabels){
+      s += `<text x="${z.x+8}" y="${z.y+16}" font-size="11" font-family="Inter,sans-serif" fill="${c}" font-weight="600">${escapeHtml(z.name.toUpperCase())}</text>`;
+    }
+  });
+  // anchors
+  if(opts.showAnchors){
+    state.anchors.forEach(a=>{
+      s += `<circle cx="${a.x}" cy="${a.y}" r="26" fill="var(--accent)" fill-opacity="0.05" stroke="var(--accent)" stroke-opacity="0.35" stroke-dasharray="3 3"/>`;
+      s += `<rect x="${a.x-4}" y="${a.y-4}" width="8" height="8" fill="var(--accent)" transform="rotate(45 ${a.x} ${a.y})"/>`;
+      s += `<text x="${a.x+9}" y="${a.y+3}" font-size="8.5" font-family="IBM Plex Mono,monospace" fill="var(--text-faint)">${a.id}</text>`;
+    });
+  }
+  // workers
+  if(opts.showWorkers){
+    state.workers.forEach(w=>{
+      s += `<circle cx="${w.x}" cy="${w.y}" r="6" fill="var(--panel)" stroke="var(--info)" stroke-width="1.6"/>`;
+      s += `<text x="${w.x}" y="${w.y+3}" font-size="7" text-anchor="middle" font-family="IBM Plex Mono,monospace" fill="var(--text)">${w.id.replace('W-','')}</text>`;
+      s += `<text x="${w.x}" y="${w.y+17}" font-size="8" text-anchor="middle" font-family="Inter,sans-serif" fill="var(--text-faint)">${w.id}</text>`;
+    });
+  }
+  // forklifts
+  state.forklifts.forEach(f=>{
+    const ringColor = f.status!=='ACTIVE' ? 'var(--text-faint)' : f.proxState==='DANGER' ? 'var(--danger)' : f.proxState==='WARNING' ? 'var(--warn)' : 'var(--safe)';
+    const click = opts.interactive ? ` style="cursor:pointer" onclick="openDrawer('forklift','${f.id}')"` : '';
+    s += `<g${click}>`;
+    if(f.status==='ACTIVE' && f.proxState!=='SAFE'){
+      s += `<circle cx="${f.x}" cy="${f.y}" r="16" fill="${ringColor}" fill-opacity="0.16"><animate attributeName="r" values="14;20;14" dur="1.6s" repeatCount="indefinite"/></circle>`;
+    }
+    s += `<rect x="${f.x-11}" y="${f.y-9}" width="22" height="18" rx="3" fill="var(--panel)" stroke="${ringColor}" stroke-width="2"/>`;
+    s += `<text x="${f.x}" y="${f.y+4}" font-size="9" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-weight="700" fill="var(--text)">${f.id.slice(-2)}</text>`;
+    s += `<text x="${f.x}" y="${f.y+24}" font-size="8" text-anchor="middle" font-family="Inter,sans-serif" fill="var(--text-dim)">${f.id}</text>`;
+    s += `</g>`;
+  });
+  s += `</svg>`;
+  return s;
+}
+function mapLegend(){
+  return `<div class="map-legend">
+    <span><i style="background:var(--safe)"></i>Safe / Green Zone</span>
+    <span><i style="background:var(--warn)"></i>Warning / Amber Zone</span>
+    <span><i style="background:var(--danger)"></i>Danger / Red Zone</span>
+    <span><i style="background:var(--info);border-radius:50%"></i>Worker</span>
+  </div>`;
+}
+
+/* ---------- charts ---------- */
+function destroyChart(key){ if(state.charts[key]){ state.charts[key].destroy(); delete state.charts[key]; } }
+function themedGrid(){ return getComputedStyle(document.documentElement).getPropertyValue('--hairline-soft').trim(); }
+function themedText(){ return getComputedStyle(document.documentElement).getPropertyValue('--text-dim').trim(); }
+/* ============================================================
+   ARK SHIELD — views: Overview, Vision, Proximity
+   ============================================================ */
+function overallSafetyStatus(){
+  const critical = state.forklifts.some(f=>f.riskState==='CRITICAL' || f.proxState==='DANGER');
+  const high = state.forklifts.some(f=>f.riskState==='HIGH' || f.proxState==='WARNING');
+  if(critical) return {label:'CRITICAL', cls:'critical', color:'--danger'};
+  if(high) return {label:'ELEVATED', cls:'high', color:'--warn'};
+  return {label:'NORMAL', cls:'safe', color:'--safe'};
+}
+
+function renderOverview(){
+  const fl = state.forklifts;
+  const active = fl.filter(f=>f.status==='ACTIVE').length;
+  const idle = fl.filter(f=>f.status==='IDLE').length;
+  const charging = fl.filter(f=>f.status==='CHARGING').length;
+  const offline = fl.filter(f=>f.status==='OFFLINE').length;
+  const activeAlerts = state.alerts.filter(a=>a.status==='ACTIVE');
+  const criticalAlerts = activeAlerts.filter(a=>a.severity==='CRITICAL');
+  const todayEvents = state.events.filter(e=> Date.now()-e.ts < 86400000 );
+  const safety = overallSafetyStatus();
+  const currentRisks = fl.filter(f=>f.riskState==='HIGH'||f.riskState==='CRITICAL').length;
+
+  return `
+    <div class="view-head">
+      <div><div class="view-title">ARK Shield Command Center</div>
+      <div class="view-sub">${escapeHtml(state.org.warehouse)} · ${escapeHtml(state.org.site)}</div></div>
+      <div class="view-actions">
+        ${simControlButtons()}
+      </div>
+    </div>
+
+    <div class="grid g-stats" style="margin-bottom:14px">
+      ${statTile('Overall Safety Status', safety.label, currentRisks+' active risk factor(s)', safety.color)}
+      ${statTile('Active Alerts', activeAlerts.length, criticalAlerts.length+' critical', activeAlerts.length? '--danger':'--safe')}
+      ${statTile('Active Forklifts', active+' / '+fl.length, idle+' idle · '+charging+' charging · '+offline+' offline', '--accent')}
+      ${statTile('Active Workers', state.workers.length, 'Tracked via UWB tags', '--info')}
+      ${statTile('Safety Events Today', todayEvents.length, todayEvents.filter(e=>e.severity==='CRITICAL'||e.severity==='HIGH').length+' high/critical', '--warn')}
+      ${statTile('Fleet Utilization', Math.round((active/fl.length)*100)+'%', 'of fleet currently active', '--accent')}
+    </div>
+
+    <div class="grid g-2">
+      <div class="panel">
+        ${panelHead('Live Industrial Map', 'Real-time simulated positions')}
+        <div class="map-wrap" style="height:340px">
+          <div class="sim-banner">SIMULATION MODE</div>
+          ${buildWarehouseMapSVG({showWorkers:true})}
+          ${mapLegend()}
+        </div>
+      </div>
+      <div class="panel">
+        ${panelHead('Recent Alerts', null, `<button class="btn sm" onclick="goTo('alerts')">View all</button>`)}
+        <div style="max-height:340px;overflow-y:auto">
+          ${activeAlerts.length ? activeAlerts.slice(0,5).map(alertCardHtml).join('') : `<div class="empty-state" style="padding:20px">${icon('check',28)}<div>No active alerts</div></div>`}
+        </div>
+      </div>
+    </div>
+
+    <div class="grid g-2" style="margin-top:14px">
+      <div class="panel">
+        ${panelHead('Recent Safety Events', null, `<button class="btn sm" onclick="goTo('events')">View all</button>`)}
+        <div class="table-wrap"><table>
+          <thead><tr><th>Time</th><th>Type</th><th>Forklift</th><th>Severity</th><th>Distance</th><th>Risk</th></tr></thead>
+          <tbody>
+            ${state.events.slice(0,6).map(e=>`<tr>
+              <td class="mono">${timeAgo(e.ts)}</td><td>${e.type}</td><td class="mono">${e.forklift}</td>
+              <td>${sevBadge(e.severity)}</td><td class="mono">${e.distance}${e.distance!=='—'?'m':''}</td><td class="mono">${e.risk??'—'}</td>
+            </tr>`).join('') || emptyRow(6,'No events recorded yet')}
+          </tbody>
+        </table></div>
+      </div>
+      <div class="panel">
+        ${panelHead('System Health', 'Simulated services clearly labeled')}
+        ${state.systemHealth.map(h=>`<div class="health-row">
+          <span><span class="dot-status ${h.status.toLowerCase()}"></span>${h.label}${h.simulated?' <span style="color:var(--text-faint);font-size:10.5px">(simulated)</span>':''}</span>
+          ${statusBadge(h.status)}
+        </div>`).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function alertCardHtml(a){
+  const colorVar = a.severity==='CRITICAL'||a.severity==='HIGH' ? '--danger' : a.severity==='MEDIUM' ? '--warn' : '--safe';
+  return `<div class="alert-card" style="--sev-c:var(${colorVar})">
+    <div class="hd">${sevBadge(a.severity)}<span class="ttl">${a.title}</span></div>
+    <div class="meta"><b>${a.forklift}</b>${a.worker?` · nearest <b>${a.worker}</b>`:''}${a.distance?` · ${a.distance}m`:''}${a.zone?` · ${a.zone}`:''} · ${timeAgo(a.ts)}</div>
+    <div class="acts">
+      ${a.status==='ACTIVE' && canAckAlerts(state.auth.role) ? `<button class="btn sm accent" onclick="acknowledgeAlert('${a.id}')">Acknowledge</button>` : statusBadge(a.status)}
+      <button class="btn sm" onclick="openDrawer('forklift','${a.forklift}')">View Forklift</button>
+      <button class="btn sm" onclick="viewCamera('${a.forklift}')">View Camera</button>
+    </div>
+  </div>`;
+}
+
+function simControlButtons(){
+  const canRun = canEdit(state.auth.role);
+  if(!canRun) return `<span class="badge info">Simulation controls require Manager access</span>`;
+  return `
+    ${state.sim.running
+      ? `<button class="btn" onclick="pauseSim()">${icon('clock',14)} Pause</button>`
+      : `<button class="btn accent" onclick="startSim()">${icon('arrow',14)} Start Simulation</button>`}
+    <button class="btn" onclick="resetSim()">Reset</button>
+    <button class="btn" onclick="increaseTraffic()">Increase Traffic</button>
+    <button class="btn" onclick="triggerWarning()">Trigger Warning</button>
+    <button class="btn danger-o" onclick="triggerCritical()">Trigger Critical</button>
+  `;
+}
+
+/* ---------- ARK Vision ---------- */
+function renderVision(){
+  const active = state.forklifts.filter(f=>f.status==='ACTIVE');
+  const focus = state.forklifts.find(f=>f.id===state.visionForkliftId && f.status==='ACTIVE') || active[0] || state.forklifts[0];
+  state.visionForkliftId = focus.id;
+  const w = state.workers.find(x=>x.id===focus._nearestWorker);
+  const nf = nearestForklift(focus);
+
+  return `
+    <div class="view-head">
+      <div><div class="view-title">ARK Vision</div><div class="view-sub">Computer-vision safety detection · simulated camera feed</div></div>
+      <div class="view-actions">
+        <select onchange="state.visionForkliftId=this.value; renderCurrentView(false)">
+          ${state.forklifts.map(f=>`<option value="${f.id}" ${f.id===focus.id?'selected':''}>${f.id} — ${f.camera}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="grid g-2">
+      <div class="panel">
+        ${panelHead(focus.camera+' — '+focus.id, focus.status==='ACTIVE'?'Live simulated feed':'Camera idle — forklift '+focus.status.toLowerCase())}
+        ${renderCameraFeed(focus, w)}
+      </div>
+      <div class="panel">
+        ${panelHead('ARK Risk Monitor')}
+        <div class="risk-gauge">
+          <div class="num" style="color:${riskColor(focus.riskState)}">${focus.riskScore}</div>
+          <div class="lbl">${riskBadge(focus.riskState)}</div>
+          <div class="track"><div class="fill" style="width:${focus.riskScore}%;background:${riskColor(focus.riskState)}"></div></div>
+        </div>
+        <div style="margin-top:14px">
+          <div class="kv-row"><span class="k">Current Zone</span><span class="v">${focus._zone||'Open Floor'}</span></div>
+          <div class="kv-row"><span class="k">Nearest Pedestrian</span><span class="v">${w? w.id+' · '+focus._nearestDist.toFixed(1)+'m' : '—'}</span></div>
+          <div class="kv-row"><span class="k">Nearest Vehicle</span><span class="v">${nf.forklift? nf.forklift.id+' · '+nf.distanceM.toFixed(1)+'m' : '—'}</span></div>
+          <div class="kv-row"><span class="k">Relative Movement</span><span class="v">${focus.status==='ACTIVE' ? (focus._converging?'Converging':'Diverging') : '—'}</span></div>
+          <div class="kv-row"><span class="k">Active Alerts</span><span class="v">${activeAlertsFor(focus.id).length}</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      ${panelHead('Recent Safety Events', 'This forklift')}
+      <div class="table-wrap"><table>
+        <thead><tr><th>Time</th><th>Forklift</th><th>Object</th><th>Distance</th><th>Risk</th><th>Action</th></tr></thead>
+        <tbody>
+          ${state.events.filter(e=>e.forklift===focus.id).slice(0,8).map(e=>`<tr>
+            <td class="mono">${timeAgo(e.ts)}</td><td class="mono">${e.forklift}</td><td>${e.object}</td>
+            <td class="mono">${e.distance}${e.distance!=='—'?'m':''}</td><td class="mono">${e.risk??'—'}</td>
+            <td>${sevBadge(e.severity)}</td>
+          </tr>`).join('') || emptyRow(6,'No safety events logged for this forklift yet')}
+        </tbody>
+      </table></div>
+    </div>
+  `;
+}
+function riskColor(state_){ return `var(${riskColorVar(state_)})`; }
+
+function renderCameraFeed(f, w){
+  if(f.status!=='ACTIVE'){
+    return `<div class="cam-frame"><div class="empty-state" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+      ${icon('camera',30)}<div style="margin-top:8px;color:var(--text-dim)">Camera idle — forklift ${f.status.toLowerCase()}</div>
+    </div></div>`;
+  }
+  // synthetic "camera view": place a horizon + detected boxes for nearest worker & forklift
+  const jitter = (state.sim.tick%2===0) ? 1 : -1;
+  const boxes = [];
+  if(w){
+    const bx = 46 + jitter*1.2, by = 30, bw = 16, bh = 34;
+    boxes.push({x:bx,y:by,w:bw,h:bh,label:'Pedestrian',conf:(0.86+Math.random()*0.1).toFixed(2),
+      dist:f._nearestDist.toFixed(1), dir: f.x> w.x ? 'Left':'Right', color:f.proxState==='DANGER'?'#F0473C':f.proxState==='WARNING'?'#F0A83B':'#33D482'});
+  }
+  const nf = nearestForklift(f);
+  if(nf.forklift && nf.distanceM<25){
+    boxes.push({x:66,y:34,w:22,h:20,label:'Forklift',conf:(0.9+Math.random()*0.08).toFixed(2),
+      dist:nf.distanceM.toFixed(1), dir:'Ahead', color:'#4E8CFF'});
+  }
+  let svg = `<svg viewBox="0 0 100 56" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;display:block">
+    <defs><linearGradient id="camgrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0c1522"/><stop offset="1" stop-color="#05070a"/>
+    </linearGradient></defs>
+    <rect width="100" height="56" fill="url(#camgrad)"/>
+    <line x1="0" y1="30" x2="100" y2="30" stroke="#1b2a3a" stroke-width="0.6"/>
+    <rect x="0" y="30" width="100" height="26" fill="#0a0f16"/>`;
+  boxes.forEach(b=>{
+    svg += `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="${b.color}" stroke-width="0.7"/>
+      <text x="${b.x}" y="${b.y-1.4}" font-size="2.6" fill="${b.color}" font-family="IBM Plex Mono,monospace">${b.label} ${b.conf}</text>
+      <text x="${b.x}" y="${b.y+b.h+3.4}" font-size="2.4" fill="${b.color}" font-family="IBM Plex Mono,monospace">${b.dist}m · ${b.dir}</text>`;
+  });
+  svg += `</svg>`;
+  return `<div class="cam-frame">
+    ${svg}
+    <div class="cam-hud">${f.id} · ${f.camera}<br/>REC ● SIMULATED</div>
+    <div class="cam-hud-r">${new Date().toLocaleTimeString()}<br/>Zone: ${f._zone||'Open Floor'}</div>
+  </div>`;
+}
+function viewCamera(forkliftId){ state.visionForkliftId = forkliftId; goTo('vision'); }
+
+/* ---------- ARK Proximity ---------- */
+function renderProximity(){
+  const wRows = state.workers.map(w=>{
+    let best=null, bd=Infinity;
+    state.forklifts.filter(f=>f.status==='ACTIVE').forEach(f=>{
+      const d = metersBetween(f,w); if(d<bd){bd=d; best=f;}
+    });
+    const ps = best ? proximityStateFor(bd, state.thresholds) : 'SAFE';
+    return {w, best, bd, ps};
+  });
+  return `
+    <div class="view-head">
+      <div><div class="view-title">ARK Proximity</div><div class="view-sub">UWB-based worker &middot; forklift proximity monitoring</div></div>
+      <div class="view-actions">${simControlButtons()}</div>
+    </div>
+    <div class="grid g-2">
+      <div class="panel">
+        ${panelHead('Proximity Map', 'Anchors, zones &amp; live positions')}
+        <div class="map-wrap" style="height:400px">
+          <div class="sim-banner">SIMULATION MODE</div>
+          ${buildWarehouseMapSVG({showWorkers:true, showAnchors:true})}
+          ${mapLegend()}
+        </div>
+      </div>
+      <div class="panel">
+        ${panelHead('Distance Thresholds', 'Configurable — not universal safety values')}
+        <div class="kv-row"><span class="k">Safe distance</span><span class="v mono">≥ ${state.thresholds.safe} m</span></div>
+        <div class="kv-row"><span class="k">Warning distance</span><span class="v mono">${state.thresholds.warning}–${state.thresholds.safe} m</span></div>
+        <div class="kv-row"><span class="k">Danger distance</span><span class="v mono">&lt; ${state.thresholds.warning} m</span></div>
+        <div style="margin-top:10px"><button class="btn sm" onclick="goTo('settings')">Edit in Settings</button></div>
+        <div class="panel-title" style="margin-top:18px;font-size:13px">Forklift Proximity Status</div>
+        <div class="table-wrap" style="margin-top:8px"><table>
+          <thead><tr><th>Forklift</th><th>Nearest Worker</th><th>Distance</th><th>State</th></tr></thead>
+          <tbody>
+            ${state.forklifts.filter(f=>f.status==='ACTIVE').map(f=>`<tr class="clickable" onclick="openDrawer('forklift','${f.id}')">
+              <td class="mono">${f.id}</td><td class="mono">${f._nearestWorker||'—'}</td>
+              <td class="mono">${f._nearestDist!=null?f._nearestDist.toFixed(1)+'m':'—'}</td><td>${proxBadge(f.proxState)}</td>
+            </tr>`).join('') || emptyRow(4,'No active forklifts')}
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+    <div class="grid g-2" style="margin-top:14px">
+      <div class="panel">
+        ${panelHead('Workers', state.workers.length+' tracked tags')}
+        <div class="table-wrap"><table>
+          <thead><tr><th>Worker</th><th>Tag ID</th><th>Nearest Forklift</th><th>Distance</th><th>State</th></tr></thead>
+          <tbody>
+            ${wRows.map(r=>`<tr>
+              <td class="mono">${r.w.id}</td><td class="mono">${r.w.tag}</td>
+              <td class="mono">${r.best?r.best.id:'—'}</td><td class="mono">${isFinite(r.bd)?r.bd.toFixed(1)+'m':'—'}</td>
+              <td>${proxBadge(r.ps)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table></div>
+      </div>
+      <div class="panel">
+        ${panelHead('Active Proximity Alerts')}
+        ${state.alerts.filter(a=>a.type==='PROXIMITY' && a.status==='ACTIVE').slice(0,6).map(alertCardHtml).join('') ||
+          `<div class="empty-state" style="padding:20px">${icon('check',26)}<div>No pedestrians in warning or danger range</div></div>`}
+      </div>
+    </div>
+  `;
+}
+/* ============================================================
+   ARK SHIELD — views: Fleet, Live Map, Safety Events, Alerts
+   ============================================================ */
+function renderFleet(){
+  const fl = state.forklifts;
+  const active = fl.filter(f=>f.status==='ACTIVE').length;
+  const idle = fl.filter(f=>f.status==='IDLE').length;
+  const offline = fl.filter(f=>f.status==='OFFLINE').length;
+  const critEvents = state.events.filter(e=>e.severity==='CRITICAL' && Date.now()-e.ts<86400000).length;
+  return `
+    <div class="view-head">
+      <div><div class="view-title">ARK Fleet</div><div class="view-sub">Forklift fleet management</div></div>
+      <div class="view-actions">${canEdit(state.auth.role)?`<button class="btn accent" onclick="pushToast('INFO','Add Forklift','Would open a create-forklift form in the full build')">${icon('plus',14)} Add Forklift</button>`:''}</div>
+    </div>
+    <div class="grid g-stats" style="margin-bottom:14px">
+      ${statTile('Total Forklifts', fl.length, null, '--accent')}
+      ${statTile('Active', active, null, '--safe')}
+      ${statTile('Idle', idle, null, '--warn')}
+      ${statTile('Offline', offline, null, '--danger')}
+      ${statTile('Safety Events Today', state.events.filter(e=>Date.now()-e.ts<86400000).length, critEvents+' critical', '--warn')}
+      ${statTile('Operating Hours (fleet)', Math.round(fl.reduce((s,f)=>s+f.hours,0)).toLocaleString(), 'lifetime, all units', '--info')}
+    </div>
+    <div class="panel">
+      ${panelHead('Fleet', null, `<div class="filter-row" style="margin:0"><select onchange="filterFleetStatus(this.value)">
+        <option value="ALL" ${fleetStatusFilter==='ALL'?'selected':''}>All statuses</option>
+        ${['ACTIVE','IDLE','CHARGING','MAINTENANCE','OFFLINE'].map(s=>`<option ${fleetStatusFilter===s?'selected':''}>${s}</option>`).join('')}
+      </select></div>`)}
+      <div class="table-wrap"><table>
+        <thead><tr><th>Forklift</th><th>Model</th><th>Status</th><th>Operator</th><th>Speed</th><th>Fuel/Battery</th><th>Risk</th><th>Hours</th></tr></thead>
+        <tbody id="fleet-tbody">
+          ${fleetRows()}
+        </tbody>
+      </table></div>
+    </div>
+  `;
+}
+let fleetStatusFilter='ALL';
+function filterFleetStatus(v){ fleetStatusFilter=v; document.getElementById('fleet-tbody').innerHTML = fleetRows(); }
+function fleetRows(){
+  const rows = state.forklifts.filter(f=>fleetStatusFilter==='ALL'||f.status===fleetStatusFilter);
+  return rows.map(f=>`<tr class="clickable" onclick="openDrawer('forklift','${f.id}')">
+    <td class="mono">${f.id}</td><td>${f.manufacturer} ${f.model}</td><td>${statusBadge(f.status)}</td>
+    <td>${f.operator||'—'}</td><td class="mono">${f.status==='ACTIVE'?f.speedKmh.toFixed(1)+' km/h':'—'}</td>
+    <td class="mono">${f.battery!=null?Math.round(f.battery)+'% batt':Math.round(f.fuel)+'% fuel'}</td>
+    <td>${f.status==='ACTIVE'?riskBadge(f.riskState):'—'}</td><td class="mono">${Math.round(f.hours).toLocaleString()}</td>
+  </tr>`).join('') || emptyRow(8,'No forklifts match this filter');
+}
+
+function renderLiveMap(){
+  return `
+    <div class="view-head">
+      <div><div class="view-title">Live Map</div><div class="view-sub">All forklifts, workers &amp; UWB anchors</div></div>
+      <div class="view-actions">${simControlButtons()}</div>
+    </div>
+    <div class="panel">
+      <div class="map-wrap" style="height:600px">
+        <div class="sim-banner">SIMULATION MODE</div>
+        ${buildWarehouseMapSVG({showWorkers:true, showAnchors:true})}
+        ${mapLegend()}
+      </div>
+    </div>
+    <div class="grid g-3" style="margin-top:14px">
+      ${state.forklifts.map(f=>`<div class="panel" style="cursor:pointer" onclick="openDrawer('forklift','${f.id}')">
+        <div class="panel-head"><div class="panel-title">${f.id}<small>${f.manufacturer} ${f.model}</small></div>${statusBadge(f.status)}</div>
+        <div class="kv-row"><span class="k">Speed</span><span class="v mono">${f.status==='ACTIVE'?f.speedKmh.toFixed(1)+' km/h':'—'}</span></div>
+        <div class="kv-row"><span class="k">Operator</span><span class="v">${f.operator||'—'}</span></div>
+        <div class="kv-row"><span class="k">Risk State</span><span class="v">${f.status==='ACTIVE'?riskBadge(f.riskState):'—'}</span></div>
+      </div>`).join('')}
+    </div>
+  `;
+}
+
+/* ---------- Safety Events ---------- */
+function renderEvents(){
+  const f = state.eventFilters;
+  const rangeMs = {today:86400000, '7d':7*86400000, '30d':30*86400000, all:Infinity}[f.range];
+  let rows = state.events.filter(e=> Date.now()-e.ts <= rangeMs );
+  if(f.severity!=='ALL') rows = rows.filter(e=>e.severity===f.severity);
+  if(f.type!=='ALL') rows = rows.filter(e=>e.type===f.type);
+  const types = [...new Set(state.events.map(e=>e.type))];
+  return `
+    <div class="view-head">
+      <div><div class="view-title">Safety Event Center</div><div class="view-sub">${rows.length} event(s) matching filters</div></div>
+    </div>
+    <div class="panel">
+      <div class="filter-row">
+        <select onchange="setEventFilter('range', this.value)">
+          <option value="today" ${f.range==='today'?'selected':''}>Today</option>
+          <option value="7d" ${f.range==='7d'?'selected':''}>7 Days</option>
+          <option value="30d" ${f.range==='30d'?'selected':''}>30 Days</option>
+          <option value="all" ${f.range==='all'?'selected':''}>All</option>
+        </select>
+        <select onchange="setEventFilter('severity', this.value)">
+          <option value="ALL">All severities</option>
+          ${['INFO','LOW','MEDIUM','HIGH','CRITICAL'].map(s=>`<option ${f.severity===s?'selected':''}>${s}</option>`).join('')}
+        </select>
+        <select onchange="setEventFilter('type', this.value)">
+          <option value="ALL">All types</option>
+          ${types.map(t=>`<option ${f.type===t?'selected':''}>${t}</option>`).join('')}
+        </select>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Event ID</th><th>Time</th><th>Type</th><th>Severity</th><th>Forklift</th><th>Operator</th><th>Zone</th><th>Object</th><th>Distance</th><th>Risk</th><th>Source</th><th>Status</th></tr></thead>
+        <tbody>
+          ${rows.slice(0,100).map(e=>`<tr>
+            <td class="mono">${e.id}</td><td class="mono">${fmtDateTime(new Date(e.ts))}</td><td>${e.type}</td>
+            <td>${sevBadge(e.severity)}</td><td class="mono">${e.forklift}</td><td class="mono">${e.operator||'—'}</td>
+            <td>${e.zone||'—'}</td><td>${e.object||'—'}</td><td class="mono">${e.distance}${e.distance!=='—'?'m':''}</td>
+            <td class="mono">${e.risk??'—'}</td><td>${e.source}</td><td>${statusBadge(e.status)}</td>
+          </tr>`).join('') || emptyRow(12,'No safety events match these filters')}
+        </tbody>
+      </table></div>
+    </div>
+  `;
+}
+function setEventFilter(k,v){ state.eventFilters[k]=v; renderCurrentView(false); }
+
+/* ---------- Alert Center ---------- */
+function renderAlerts(){
+  const active = state.alerts.filter(a=>a.status==='ACTIVE');
+  const history = state.alerts.filter(a=>a.status!=='ACTIVE');
+  return `
+    <div class="view-head">
+      <div><div class="view-title">Alert Center</div><div class="view-sub">${active.length} active alert(s)</div></div>
+    </div>
+    <div class="grid g-2">
+      <div class="panel">
+        ${panelHead('Active')}
+        ${active.length? active.map(alertCardHtml).join('') : `<div class="empty-state">${icon('check',30)}<div>No active alerts — all clear</div></div>`}
+      </div>
+      <div class="panel">
+        ${panelHead('History')}
+        <div style="max-height:520px;overflow-y:auto">
+        ${history.slice(0,30).map(a=>`<div class="alert-card" style="--sev-c:var(--hairline);opacity:.8">
+          <div class="hd">${sevBadge(a.severity)}<span class="ttl">${a.title}</span>${statusBadge(a.status)}</div>
+          <div class="meta"><b>${a.forklift}</b>${a.worker?` · ${a.worker}`:''} · ${timeAgo(a.ts)}</div>
+        </div>`).join('') || `<div class="empty-state" style="padding:20px"><div>No resolved alerts yet</div></div>`}
+        </div>
+      </div>
+    </div>
+  `;
+}
+function acknowledgeAlert(id){
+  const a = state.alerts.find(x=>x.id===id);
+  if(!a) return;
+  a.status='ACKNOWLEDGED';
+  renderCurrentView(false);
+  pushToast('INFO','Alert acknowledged', a.title);
+}
+
+/* ---------- Detail Drawer ---------- */
+function openDrawer(type, id){
+  state.drawer = {open:true, type, id};
+  document.getElementById('drawer-scrim').classList.add('open');
+  const dr = document.getElementById('detail-drawer');
+  dr.classList.add('open');
+  renderDrawer();
+}
+function closeDrawer(){
+  state.drawer.open=false;
+  document.getElementById('drawer-scrim').classList.remove('open');
+  document.getElementById('detail-drawer').classList.remove('open');
+}
+function renderDrawer(){
+  const dr = document.getElementById('detail-drawer');
+  if(!state.drawer.open){ dr.innerHTML=''; return; }
+  if(state.drawer.type==='anomaly'){ renderAnomalyDrawer(dr); return; }
+  if(state.drawer.type==='forklift'){
+    const f = state.forklifts.find(x=>x.id===state.drawer.id);
+    if(!f){ closeDrawer(); return; }
+    const evs = state.events.filter(e=>e.forklift===f.id).slice(0,10);
+    const mnt = state.maintenance.filter(m=>m.forklift===f.id);
+    dr.innerHTML = `
+      <div class="drawer-head">
+        <div><div class="panel-title">${f.id}</div><div class="view-sub">${f.manufacturer} ${f.model}</div></div>
+        <button class="drawer-close" onclick="closeDrawer()">${icon('x',18)}</button>
+      </div>
+      <div class="drawer-body">
+        <div style="display:flex;gap:8px;margin-bottom:14px">${statusBadge(f.status)}${f.status==='ACTIVE'?riskBadge(f.riskState):''}</div>
+        <div class="kv-row"><span class="k">Asset Number</span><span class="v mono">${f.asset}</span></div>
+        <div class="kv-row"><span class="k">Type</span><span class="v">${f.type}</span></div>
+        <div class="kv-row"><span class="k">Capacity</span><span class="v">${f.capacity}</span></div>
+        <div class="kv-row"><span class="k">Operator</span><span class="v">${f.operator||'Unassigned'}</span></div>
+        <div class="kv-row"><span class="k">Current Speed</span><span class="v mono">${f.status==='ACTIVE'?f.speedKmh.toFixed(1)+' km/h':'0 km/h'}</span></div>
+        <div class="kv-row"><span class="k">Current Zone</span><span class="v">${f._zone||'—'}</span></div>
+        <div class="kv-row"><span class="k">Operating Hours</span><span class="v mono">${Math.round(f.hours).toLocaleString()}</span></div>
+        <div class="kv-row"><span class="k">${f.battery!=null?'Battery':'Fuel'}</span><span class="v mono">${Math.round(f.battery!=null?f.battery:f.fuel)}%</span></div>
+        <div class="kv-row"><span class="k">Last Service</span><span class="v mono">${f.lastService}</span></div>
+        <div class="kv-row"><span class="k">Next Service</span><span class="v mono">${f.nextService}</span></div>
+        <div class="panel-title" style="margin:18px 0 8px;font-size:13px">Recent Safety Events</div>
+        <div class="table-wrap"><table><tbody>
+          ${evs.map(e=>`<tr><td class="mono">${timeAgo(e.ts)}</td><td>${e.type}</td><td>${sevBadge(e.severity)}</td></tr>`).join('') || emptyRow(3,'No events')}
+        </tbody></table></div>
+        <div class="panel-title" style="margin:18px 0 8px;font-size:13px">Maintenance History</div>
+        <div class="table-wrap"><table><tbody>
+          ${mnt.map(m=>`<tr><td class="mono">${m.date}</td><td>${m.type}</td><td>${statusBadge(m.status)}</td></tr>`).join('') || emptyRow(3,'No records')}
+        </tbody></table></div>
+        <div style="margin-top:16px;display:flex;gap:8px">
+          <button class="btn sm" onclick="viewCamera('${f.id}')">Open ARK Vision</button>
+          <button class="btn sm" onclick="closeDrawer();goTo('proximity')">Open Proximity Map</button>
+        </div>
+      </div>`;
+  }
+}
+/* ============================================================
+   ARK SHIELD — views: Analytics, Operators, Devices, Zones,
+   Maintenance, Settings, ARK Predict
+   ============================================================ */
+function renderAnalytics(){
+  const html = `
+    <div class="view-head">
+      <div><div class="view-title">Analytics</div><div class="view-sub">Fleet &amp; safety analytics</div></div>
+      <div class="view-actions">
+        <select id="analytics-range" onchange="renderCurrentView(false)">
+          <option value="today">Today</option><option value="7d" selected>7 Days</option><option value="30d">30 Days</option>
+        </select>
+      </div>
+    </div>
+    <div class="grid g-2">
+      <div class="panel">${panelHead('Safety Events by Severity')}<div style="height:240px"><canvas id="chart-sev"></canvas></div></div>
+      <div class="panel">${panelHead('Fleet Utilization')}<div style="height:240px"><canvas id="chart-util"></canvas></div></div>
+    </div>
+    <div class="grid g-2" style="margin-top:14px">
+      <div class="panel">${panelHead('Proximity Events Over Time')}<div style="height:240px"><canvas id="chart-prox"></canvas></div></div>
+      <div class="panel">${panelHead('Event Type Breakdown')}<div style="height:240px"><canvas id="chart-type"></canvas></div></div>
+    </div>
+  `;
+  setTimeout(buildAnalyticsCharts, 0);
+  return html;
+}
+function buildAnalyticsCharts(){
+  if(typeof Chart==='undefined') return;
+  ['chart-sev','chart-util','chart-prox','chart-type'].forEach(destroyChart);
+  const grid = themedGrid(), txt = themedText();
+  Chart.defaults.color = txt; Chart.defaults.borderColor = grid; Chart.defaults.font.family='Inter, sans-serif';
+
+  const rangeSel = document.getElementById('analytics-range');
+  const rangeMs = {today:86400000, '7d':7*86400000, '30d':30*86400000}[rangeSel?rangeSel.value:'7d'] || 7*86400000;
+  const evInRange = state.events.filter(e=> Date.now()-e.ts <= rangeMs);
+
+  const sevCounts = {LOW:0,MEDIUM:0,HIGH:0,CRITICAL:0};
+  evInRange.forEach(e=>{ if(sevCounts[e.severity]!=null) sevCounts[e.severity]++; });
+  const c1 = document.getElementById('chart-sev');
+  if(c1) state.charts['chart-sev'] = new Chart(c1, {type:'bar', data:{labels:Object.keys(sevCounts),
+    datasets:[{label:'Events', data:Object.values(sevCounts), backgroundColor:['#33D482','#F0A83B','#F0473C','#a8281f']}]},
+    options:{plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true, ticks:{precision:0}}}}});
+
+  const c2 = document.getElementById('chart-util');
+  if(c2) state.charts['chart-util'] = new Chart(c2, {type:'doughnut', data:{
+    labels:['Active','Idle','Charging','Maintenance','Offline'],
+    datasets:[{data:['ACTIVE','IDLE','CHARGING','MAINTENANCE','OFFLINE'].map(s=>state.forklifts.filter(f=>f.status===s).length),
+      backgroundColor:['#33D482','#8B9BB4','#F0A83B','#4E8CFF','#F0473C']}]},
+    options:{plugins:{legend:{position:'bottom', labels:{boxWidth:10}}}}});
+
+  const buckets = new Array(8).fill(0);
+  evInRange.filter(e=>e.type==='PEDESTRIAN PROXIMITY').forEach((e,i)=>{ buckets[i%8]++; });
+  const c3 = document.getElementById('chart-prox');
+  if(c3) state.charts['chart-prox'] = new Chart(c3, {type:'line', data:{labels:buckets.map((_,i)=>'T-'+(8-i)),
+    datasets:[{label:'Proximity Events', data:buckets, borderColor:'#4E8CFF', backgroundColor:'rgba(78,140,255,0.15)', fill:true, tension:.35}]},
+    options:{plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true, ticks:{precision:0}}}}});
+
+  const typeCounts = {};
+  evInRange.forEach(e=>{ typeCounts[e.type]=(typeCounts[e.type]||0)+1; });
+  const c4 = document.getElementById('chart-type');
+  if(c4) state.charts['chart-type'] = new Chart(c4, {type:'bar', data:{labels:Object.keys(typeCounts),
+    datasets:[{label:'Count', data:Object.values(typeCounts), backgroundColor:'#4E8CFF'}]},
+    options:{indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{beginAtZero:true, ticks:{precision:0}}}}});
+}
+
+/* ---------- Operators ---------- */
+function renderOperators(){
+  return `
+    <div class="view-head"><div><div class="view-title">Operators</div><div class="view-sub">Authorization &amp; assignment</div></div></div>
+    <div class="panel">
+      <div class="table-wrap"><table>
+        <thead><tr><th>Operator</th><th>Name</th><th>Status</th><th>Training</th><th>Forklift</th><th>Hours</th><th>Events</th><th>Last Activity</th></tr></thead>
+        <tbody>
+          ${state.operators.map(o=>`<tr>
+            <td class="mono">${o.id}</td><td>${o.name}</td><td>${statusBadge(o.status)}</td><td>${statusBadge(o.training)}</td>
+            <td class="mono">${o.forklift||'—'}</td><td class="mono">${o.hours.toLocaleString()}</td><td class="mono">${o.events}</td><td>${o.lastActive}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>
+  `;
+}
+
+/* ---------- Devices ---------- */
+function renderDevices(){
+  return `
+    <div class="view-head"><div><div class="view-title">Devices</div><div class="view-sub">Cameras &amp; UWB hardware</div></div></div>
+    <div class="grid g-2">
+      <div class="panel">${panelHead('Cameras')}
+        <div class="table-wrap"><table><thead><tr><th>Camera</th><th>Mount</th><th>Forklift</th><th>Status</th></tr></thead><tbody>
+          ${state.cameras.map(c=>`<tr><td class="mono">${c.id}</td><td>${c.mount}</td><td class="mono">${c.forklift}</td><td>${statusBadge(c.status)}</td></tr>`).join('')}
+        </tbody></table></div>
+      </div>
+      <div class="panel">${panelHead('UWB Anchors')}
+        <div class="table-wrap"><table><thead><tr><th>Anchor</th><th>Position (x,y)</th><th>Status</th></tr></thead><tbody>
+          ${state.anchors.map(a=>`<tr><td class="mono">${a.id}</td><td class="mono">${Math.round(a.x)}, ${Math.round(a.y)}</td><td>${statusBadge('ONLINE')}</td></tr>`).join('')}
+        </tbody></table></div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:14px">${panelHead('Worker UWB Tags')}
+      <div class="table-wrap"><table><thead><tr><th>Worker</th><th>Tag ID</th><th>Status</th></tr></thead><tbody>
+        ${state.workers.map(w=>`<tr><td class="mono">${w.id}</td><td class="mono">${w.tag}</td><td>${statusBadge('ONLINE')}</td></tr>`).join('')}
+      </tbody></table></div>
+    </div>
+  `;
+}
+
+/* ---------- Zones ---------- */
+function renderZones(){
+  const editable = canEdit(state.auth.role);
+  return `
+    <div class="view-head">
+      <div><div class="view-title">Zones</div><div class="view-sub">Safety zone configuration</div></div>
+      <div class="view-actions">${editable?`<button class="btn accent" onclick="addZone()">${icon('plus',14)} Add Zone</button>`:''}</div>
+    </div>
+    <div class="grid g-2">
+      <div class="panel">
+        <div class="map-wrap" style="height:400px">${buildWarehouseMapSVG({showWorkers:false, showAnchors:true, interactive:false})}${mapLegend()}</div>
+      </div>
+      <div class="panel">
+        ${panelHead('Configured Zones')}
+        <div class="table-wrap"><table>
+          <thead><tr><th>Zone</th><th>Type</th><th>Severity</th><th>Speed Limit</th>${editable?'<th></th>':''}</tr></thead>
+          <tbody>
+            ${state.zones.map(z=>`<tr>
+              <td><span class="zone-swatch" style="background:${z.severity==='red'?'var(--danger)':z.severity==='amber'?'var(--warn)':'var(--safe)'}"></span>${z.name}</td>
+              <td>${z.kind}</td>
+              <td>${editable?`<select onchange="setZoneSeverity('${z.id}', this.value)">
+                  ${['green','amber','red'].map(s=>`<option value="${s}" ${z.severity===s?'selected':''}>${s.toUpperCase()}</option>`).join('')}
+                </select>` : z.severity.toUpperCase()}</td>
+              <td class="mono">${z.speedLimit} km/h</td>
+              ${editable?`<td><button class="btn sm danger-o" onclick="deleteZone('${z.id}')">Remove</button></td>`:''}
+            </tr>`).join('')}
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+  `;
+}
+function setZoneSeverity(id, sev){
+  const z = state.zones.find(x=>x.id===id); if(!z) return;
+  z.severity = sev; pushToast('INFO','Zone updated', z.name+' set to '+sev.toUpperCase());
+  renderCurrentView(false);
+}
+function deleteZone(id){
+  state.zones = state.zones.filter(z=>z.id!==id);
+  pushToast('INFO','Zone removed', id);
+  renderCurrentView(false);
+}
+function addZone(){
+  const n = state.zones.length+1;
+  state.zones.push({id:uid('zone'), name:'New Zone '+n, kind:'Storage / Rack Area', x:40+n*10, y:400, w:120, h:100, severity:'green', speedLimit:10});
+  renderCurrentView(false);
+  pushToast('INFO','Zone added','Configure its severity from the table');
+}
+
+/* ---------- Maintenance ---------- */
+function renderMaintenance(){
+  return `
+    <div class="view-head"><div><div class="view-title">Maintenance</div><div class="view-sub">Service &amp; inspection history</div></div>
+      <div class="view-actions">${canEdit(state.auth.role)?`<button class="btn accent" onclick="pushToast('INFO','Log Maintenance','Would open a create-record form in the full build')">${icon('plus',14)} Log Record</button>`:''}</div>
+    </div>
+    <div class="panel">
+      <div class="table-wrap"><table>
+        <thead><tr><th>Forklift</th><th>Type</th><th>Date</th><th>Notes</th><th>Status</th></tr></thead>
+        <tbody>
+          ${state.maintenance.map(m=>`<tr><td class="mono">${m.forklift}</td><td>${m.type}</td><td class="mono">${m.date}</td><td>${m.notes}</td><td>${statusBadge(m.status)}</td></tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>
+  `;
+}
+
+/* ---------- Settings ---------- */
+function renderSettings(){
+  return `
+    <div class="view-head"><div><div class="view-title">Settings</div><div class="view-sub">Thresholds, simulation &amp; system notices</div></div></div>
+    <div class="grid g-2">
+      <div class="panel">
+        ${panelHead('UWB Distance Thresholds', 'Demo defaults — configurable, not universally safe distances')}
+        <div class="slider-row">
+          <div class="top"><span>Safe distance</span><span class="mono">${state.thresholds.safe} m</span></div>
+          <input type="range" min="10" max="25" value="${state.thresholds.safe}" oninput="updateThreshold('safe', this.value)">
+        </div>
+        <div class="slider-row">
+          <div class="top"><span>Warning distance</span><span class="mono">${state.thresholds.warning} m</span></div>
+          <input type="range" min="3" max="14" value="${state.thresholds.warning}" oninput="updateThreshold('warning', this.value)">
+        </div>
+        <div class="notice-box">Below the warning distance is classified DANGER. Thresholds are illustrative demo defaults — site-specific values should be set by your safety team.</div>
+      </div>
+      <div class="panel">
+        ${panelHead('Simulation Controls')}
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">${simControlButtons()}</div>
+        <div class="kv-row"><span class="k">Tick</span><span class="v mono">${state.sim.tick}</span></div>
+        <div class="kv-row"><span class="k">Traffic Level</span><span class="v mono">${state.sim.traffic} / 3</span></div>
+        <div class="kv-row"><span class="k">Status</span><span class="v">${state.sim.running?'Running':'Paused'}</span></div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      ${panelHead('Safety Notices')}
+      <div class="notice-box danger">Emergency systems must be independently validated. ARK Shield does not control real forklift machinery in this MVP, and simulated emergency actions are labeled DEMO ONLY throughout the product.</div>
+      <div class="notice-box">The ARK Risk Score is a conceptual demo model for illustrating the platform's workflow. It is not a scientifically validated collision-prediction system.</div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      ${panelHead('Appearance')}
+      <button class="btn" onclick="toggleTheme()">Toggle ${state.theme==='dark'?'Light':'Dark'} Mode</button>
+    </div>
+  `;
+}
+function updateThreshold(k, v){
+  state.thresholds[k] = Number(v);
+  if(state.thresholds.warning >= state.thresholds.safe) state.thresholds.safe = state.thresholds.warning+1;
+  renderCurrentView(false);
+}
+
+/* ---------- ARK Predict — machine-health anomaly detection (HTH-ML-10) ----------
+   Live view over the backend's /api/anomaly stream: context-aware per-sensor
+   detectors + Isolation Forest, severity 0-100, tiered routing
+   (IGNORE -> log, MONITOR -> maintenance queue, URGENT -> page), root-cause hints.
+   Unlike the rest of this demo page (client-side simulation), this view talks
+   to the real Python backend. */
+const PR_API = (location.protocol.startsWith('http') ? '' : 'http://localhost:4000') + '/api/anomaly';
+const PR = {online:null, cfg:null, status:null, machines:[], machine:'ARK-F002', feed:[], feedMode:'alerts',
+  lastAlertId:null, series:null, summary:null, timer:null, busy:false, summaryAt:0, points:240, tick:0};
+const PR_TIER_VAR = {OK:'--safe', IGNORE:'--info', MONITOR:'--warn', URGENT:'--danger'};
+const PR_INFO_LABEL = {models:'Models that flagged it', gauss_score:'Gaussian (joint-shift) score',since:'Started', slope_z_per_min:'Slope (σ / min)', time_to_limit_s:'Time to hard limit (s)', ewma_z:'Smoothed deviation (σ)',
+  missing_s:'Seconds without data', stuck_s:'Seconds frozen', value:'Frozen value', spikes_in_window:'Spikes in window', window_s:'Window (s)',
+  top_sensors:'Sensors the model points at', ml_score:'ML score', model:'Raised by', if_score:'Isolation Forest score',
+  ae_score:'Autoencoder score'};
+const PR_AE_COLOR = '#A78BFA';
+const PR_G_COLOR = '#2DD4BF';
+const PR_COMP_LABEL = {feedback:'Technician feedback (learned)', type:'Anomaly type', magnitude:'Magnitude', persistence:'Persistence', trend:'Trend / blind time',
+  spread:'Spread on truck', ml:'ML evidence (Isolation Forest)'};
+
+function prVar(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function prTierColor(t){ return prVar(PR_TIER_VAR[t]||'--info') || '#8B9BB4'; }
+function prTierBadge(t){ return badge(t, ({OK:'safe',IGNORE:'info',MONITOR:'warning',URGENT:'critical'}[t]||'info')+' dot'); }
+function prFmtT(t){ if(t==null) return '—'; const s=Math.max(0,t-(PR.status?PR.status.simT-PR.status.monitoredS:0));
+  const h=Math.floor(s/3600), m=Math.floor(s%3600/60), x=s%60; return (h?h+':':'')+String(m).padStart(h?2:1,'0')+':'+String(x).padStart(2,'0'); }
+function prFmtNum(n){ return n==null ? '—' : Number(n).toLocaleString(); }
+function prPct(x){ return x==null ? '—' : Math.round(x*100)+'%'; }
+
+async function prFetch(path, opts){
+  const r = await fetch(PR_API+path, Object.assign({headers:{'Content-Type':'application/json'}}, opts||{}));
+  if(!r.ok){ let msg=r.status; try{ msg=(await r.json()).error||msg; }catch(e){} throw new Error(msg); }
+  return path.endsWith('.md') ? r.text() : r.json();
+}
+function prPost(path, body){ return prFetch(path, {method:'POST', body:JSON.stringify(body||{})}); }
+
+/* ---------- lifecycle ---------- */
+function predictBoot(){ if(PR.timer) return; PR.timer = setInterval(prTick, 1000); prTick(); }
+function predictStop(){ clearInterval(PR.timer); PR.timer=null; }
+async function prTick(){
+  if(PR.busy) return; PR.busy = true; PR.tick++;
+  try{
+    if(state.activeView==='predict') await prRefresh();
+    else if(PR.tick%2===0 || PR.lastAlertId===null) await prPollAlerts();
+  }catch(e){ prSetOffline(e); }
+  finally{ PR.busy=false; }
+}
+function prSetOffline(e){
+  const was = PR.online; PR.online = false;
+  const el = document.getElementById('pr-status');
+  if(el) el.innerHTML = badge('BACKEND OFFLINE','critical dot');
+  const off = document.getElementById('pr-offline');
+  if(off) off.style.display='block';
+  if(was!==false && state.activeView==='predict') pushToast('HIGH','ARK Predict backend unreachable', 'Start it with: uvicorn app.main:app --port 4000');
+}
+
+/* routed machine-health alerts also land in the global Alert Center */
+async function prPollAlerts(){
+  const alerts = await prFetch('/alerts?limit=25');
+  PR.online = true;
+  if(PR.lastAlertId===null){ PR.lastAlertId = alerts.length ? alerts[0].id : 0; return; }
+  const fresh = alerts.filter(a=>a.id>PR.lastAlertId).reverse();
+  fresh.forEach(a=>{
+    const sev = a.tier==='URGENT' ? 'CRITICAL' : 'MEDIUM';
+    const title = `${a.tier==='URGENT'?'URGENT':'MONITOR'} — ${a.title.split(' · ').slice(1).join(' · ')}`;
+    if(a.tier==='URGENT'){
+      createAlert({severity:sev, title, forklift:a.machine, type:'MACHINE_HEALTH'});
+    }else{
+      state.alerts.unshift({id:uid('ALT'), ts:Date.now(), severity:sev, title, forklift:a.machine, type:'MACHINE_HEALTH', status:'ACTIVE'});
+      if(state.alerts.length>200) state.alerts.length=200;
+    }
+  });
+  if(alerts.length) PR.lastAlertId = Math.max(PR.lastAlertId, alerts[0].id);
+  if(fresh.length) renderLiveWidgets();
+}
+
+async function prRefresh(){
+  if(!PR.cfg) PR.cfg = await prFetch('/config');
+  const [st, machines, series, feed] = await Promise.all([
+    prFetch('/status'), prFetch('/machines'),
+    prFetch('/series?machineId='+encodeURIComponent(PR.machine)+'&points='+PR.points),
+    prFetch('/feed?limit=80'),
+  ]);
+  PR.online = true; PR.status = st; PR.machines = machines; PR.series = series; PR.feed = feed;
+  await prPollAlerts();
+  if(state.activeView!=='predict') return;
+  const off = document.getElementById('pr-offline'); if(off) off.style.display='none';
+  prRenderStatus(); prRenderTiles(); prRenderFleet(); prUpdateCharts(); prRenderFeed();
+  if(Date.now()-PR.summaryAt > 6000){
+    PR.summaryAt = Date.now();
+    const [sum, fb] = await Promise.all([prFetch('/summary'), prFetch('/feedback').catch(()=>null)]);
+    PR.summary = sum; PR.learned = fb; prRenderSummary(); prRenderLearned();
+  }
+}
+
+/* ---------- view ---------- */
+function renderPredict(){
+  const html = `
+    <div class="view-head">
+      <div><div class="view-title">ARK Predict — Machine Health</div>
+        <div class="view-sub">Severity-aware streaming anomaly detection on forklift sensors · statistical detectors + Isolation Forest + Gaussian + deep autoencoder · technician feedback · tiered routing</div></div>
+      <div class="view-actions pr-actions">
+        <span id="pr-status">${badge('CONNECTING…','info')}</span>
+        <select id="pr-speed" onchange="prSetSpeed(this.value)" title="Simulated seconds per half-second tick">
+          ${[1,2,5,10].map(s=>`<option value="${s}" ${PR.status&&PR.status.speed===s?'selected':''}>${s*2}× speed</option>`).join('')}
+        </select>
+        <button class="btn" id="pr-run" onclick="prToggleRun()">${icon('clock',14)} Pause</button>
+        <button class="btn" onclick="prReset()">Reset</button>
+        <button class="btn accent" onclick="prDownloadReport()">${icon('chart',14)} Run report</button>
+      </div>
+    </div>
+    <div class="notice-box danger" id="pr-offline" style="display:none;margin-bottom:14px">
+      This view needs the ARK Shield Python backend. Start it from the project folder with
+      <span class="mono">uvicorn app.main:app --port 4000</span> and open <span class="mono">http://localhost:4000/</span>.
+    </div>
+    <div class="grid g-stats" id="pr-tiles"></div>
+    <div class="pr-fleet" id="pr-fleet" style="margin-top:14px"></div>
+    <div class="grid g-2" style="margin-top:14px">
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title" id="pr-chart-title">Live sensors<small>reading vs. expected-for-this-load · shaded = detected incident (colour = tier) · bottom strip = injected fault (ground truth)</small></div>
+          <select id="pr-points" onchange="PR.points=+this.value;prTick()">
+            ${[120,240,480].map(p=>`<option value="${p}" ${PR.points===p?'selected':''}>last ${p/60} min</option>`).join('')}
+          </select></div>
+        <div id="pr-charts">
+          ${(PR.cfg?PR.cfg.sensors:[]).map(s=>prChartSlot(s)).join('') || '<div class="empty-state" style="padding:30px">Loading sensors…</div>'}
+          <div class="pr-chart-row"><div class="pr-chart-hd"><span>ML scores: <b style="color:var(--high)">Isolation Forest</b> · <b style="color:#2DD4BF">Gaussian (joint shift)</b> · <b style="color:#A78BFA">Autoencoder (30 s shape)</b> <small>(1.0 = 99.5th pct of healthy · dashed = pattern trigger)</small></span><span id="pr-v-ml" class="mono"></span></div>
+            <div class="pr-chart-box pr-ml"><svg id="pr-c-ml" viewBox="0 0 1000 100" preserveAspectRatio="none"></svg><span class="pr-y hi"></span><span class="pr-y lo"></span></div></div>
+        </div>
+      </div>
+      <div class="panel pr-feed-panel">
+        <div class="panel-head"><div class="panel-title">Routing feed<small>what operators were told — and what was kept from them</small></div>
+          <div class="pr-seg">
+            <button class="${PR.feedMode==='alerts'?'on':''}" onclick="PR.feedMode='alerts';prRenderFeed(true)">Alerts</button>
+            <button class="${PR.feedMode==='all'?'on':''}" onclick="PR.feedMode='all';prRenderFeed(true)">All decisions</button>
+          </div></div>
+        <div id="pr-feed" class="pr-feed"></div>
+      </div>
+    </div>
+    <div class="grid g-2" style="margin-top:14px">
+      <div class="panel" id="pr-summary">${panelHead('Run evaluation','scored against injected ground truth')}<div class="empty-state" style="padding:20px">Collecting…</div></div>
+      <div class="panel">
+        ${panelHead('Fault injection', 'DEMO — inject a labelled fault into the live stream')}
+        <div class="pr-inject">
+          <label>Forklift<select id="pr-in-machine">${(PR.cfg?PR.cfg.machines:[{id:PR.machine}]).map(m=>`<option ${m.id===PR.machine?'selected':''}>${m.id}</option>`).join('')}</select></label>
+          <label>Fault<select id="pr-in-scen">${(PR.cfg?PR.cfg.scenarios:['drift']).map(s=>`<option value="${s}">${s.replace('_',' ')}</option>`).join('')}</select></label>
+          <label>Sensor<select id="pr-in-sensor"><option value="">auto</option>${(PR.cfg?PR.cfg.sensors:[]).map(s=>`<option value="${s.key}">${escapeHtml(s.label)}</option>`).join('')}</select></label>
+          <button class="btn accent" onclick="prInject()">Inject</button>
+        </div>
+        <div class="pr-quick">
+          <button class="btn sm" onclick="prInject('bearing_wear')">Bearing wear</button>
+          <button class="btn sm" onclick="prInject('hydraulic_leak')">Hydraulic leak</button>
+          <button class="btn sm" onclick="prInject('stuck','hydraulic_pressure')">Stuck pressure sensor</button>
+          <button class="btn sm" onclick="prInject('dropout','motor_temp')">Temp sensor dropout</button>
+          <button class="btn sm" onclick="prInject('spike','mast_vibration')">Single spike</button>
+          <button class="btn sm" onclick="prInject('spike_burst','battery_voltage')">Loose connector</button>
+          <button class="btn sm" onclick="prInject('oscillation','mast_vibration')">Chain oscillation (DL only)</button>
+          <button class="btn sm" onclick="prInject('overload')">Overload lift (joint pattern)</button>
+        </div>
+        <div class="kv-row" style="margin-top:10px"><span class="k">Tiers</span><span class="v">${prTierBadge('IGNORE')} log only · ${prTierBadge('MONITOR')} maintenance queue · ${prTierBadge('URGENT')} page on-call</span></div>
+        <div class="kv-row"><span class="k">Random fault rate</span><span class="v"><select id="pr-rate" onchange="prSetRate(this.value)">
+          ${[0,0.4,0.8,1.5,3].map(r=>`<option value="${r}" ${PR.status&&PR.status.faultRatePerMin===r?'selected':''}>${r} / min</option>`).join('')}</select></span></div>
+        <div class="pr-sub" style="margin-top:14px">Learned from technicians <small>(open an incident → give a verdict)</small></div>
+        <div id="pr-learned" class="pr-learned"><div class="pr-expl" style="margin:0">No verdicts yet.</div></div>
+        <div class="notice-box" style="margin-top:12px">Simulated sensor data. Severity scores are a decision-support aid for maintenance triage, not a certified safety system.</div>
+      </div>
+    </div>`;
+  setTimeout(prInitView, 0);
+  return html;
+}
+function prChartSlot(s){
+  return `<div class="pr-chart-row"><div class="pr-chart-hd"><span>${escapeHtml(s.label)} <small>${escapeHtml(s.unit)}</small></span><span id="pr-v-${s.key}" class="mono"></span></div>
+    <div class="pr-chart-box"><svg id="pr-c-${s.key}" viewBox="0 0 1000 100" preserveAspectRatio="none"></svg><span class="pr-y hi"></span><span class="pr-y lo"></span></div></div>`;
+}
+async function prInitView(){
+  if(!PR.cfg){
+    try{ PR.cfg = await prFetch('/config'); if(state.activeView==='predict') renderCurrentView(false); return; }
+    catch(e){ prSetOffline(e); return; }
+  }
+  prInitCharts();
+  // paint the last known state immediately (no blank panels while the first poll is in flight)
+  if(PR.status){ prRenderStatus(); prRenderTiles(); prRenderFleet(); prUpdateCharts(); prRenderFeed(); }
+  if(PR.summary) prRenderSummary();
+  prTick();
+}
+
+/* ---------- charts: dependency-free SVG (works offline, no CDN needed) ---------- */
+function prChartSvgInner(lines, bands, xmin, xmax, yExtra){
+  const W=1000, H=100, P=4;
+  let lo=Infinity, hi=-Infinity;
+  lines.forEach(l=>l.pts.forEach(p=>{ if(p[1]!=null && isFinite(p[1])){ lo=Math.min(lo,p[1]); hi=Math.max(hi,p[1]); } }));
+  (yExtra||[]).forEach(v=>{ lo=Math.min(lo,v); hi=Math.max(hi,v); });
+  if(!isFinite(lo)){ lo=0; hi=1; }
+  if(hi-lo<1e-9){ hi+=0.5; lo-=0.5; }
+  const pad=(hi-lo)*0.08; lo-=pad; hi+=pad;
+  const X = x => (x-xmin)/Math.max(1,xmax-xmin)*W;
+  const Y = y => P + (1-(y-lo)/(hi-lo))*(H-2*P);
+  let svg = '';
+  bands.forEach(b=>{
+    const x1=Math.max(0,X(b.from-0.5)), x2=Math.min(W,X(b.to+0.5)); if(x2<=x1) return;
+    if(b.truth) svg += `<rect x="${x1.toFixed(1)}" y="${H-3}" width="${(x2-x1).toFixed(1)}" height="3" fill="var(--accent)" opacity=".9"/>`;
+    else svg += `<rect x="${x1.toFixed(1)}" y="0" width="${Math.max(3,x2-x1).toFixed(1)}" height="${H}" fill="${cssVar(PR_TIER_VAR[b.tier]||'--info')}" opacity="${b.tier==='IGNORE'?0.18:0.24}"/>`;
+  });
+  lines.forEach(l=>{
+    let d='', pen=false;
+    l.pts.forEach(p=>{
+      if(p[1]==null || !isFinite(p[1])){ pen=false; return; }
+      d += (pen?'L':'M') + X(p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1); pen=true;
+    });
+    if(d) svg += `<path d="${d}" fill="none" stroke="${l.color}" stroke-width="${l.width||1.4}" ${l.dash?`stroke-dasharray="${l.dash}"`:''} vector-effect="non-scaling-stroke" stroke-linejoin="round"/>`;
+  });
+  return {svg, lo, hi};
+}
+function prDrawChart(key, lines, bands, xmin, xmax, yExtra, decimals){
+  const el = document.getElementById('pr-c-'+key); if(!el) return;
+  const r = prChartSvgInner(lines, bands, xmin, xmax, yExtra);
+  el.innerHTML = r.svg;
+  const box = el.parentNode;
+  const hi = box.querySelector('.pr-y.hi'), lo = box.querySelector('.pr-y.lo');
+  if(hi) hi.textContent = r.hi.toFixed(decimals);
+  if(lo) lo.textContent = r.lo.toFixed(decimals);
+}
+function prInitCharts(){ /* SVG charts are redrawn on every refresh; nothing to set up */ }
+function prUpdateCharts(){
+  const sr = PR.series; if(!sr || !PR.cfg) return;
+  const title = document.getElementById('pr-chart-title');
+  if(title && title.firstChild) title.firstChild.nodeValue = `Live sensors — ${sr.machine} `;
+  const xmin = sr.tNow - PR.points + 1, xmax = sr.tNow;
+  PR.cfg.sensors.forEach(s=>{
+    const d = sr.sensors[s.key]; if(!d) return;
+    const bands = d.incidents.map(b=>({from:b.from, to:b.to, tier:b.tier}))
+      .concat(sr.injected.filter(a=>a.sensors.includes(s.key)).map(a=>({from:a.start, to:Math.min(a.end, sr.tNow), truth:true})));
+    prDrawChart(s.key, [
+      {pts:d.t.map((t,i)=>[t, d.expected[i]]), color:'var(--text-faint)', dash:'5 4', width:1},
+      {pts:d.t.map((t,i)=>[t, d.value[i]]), color:'var(--accent)', width:1.5},
+    ], bands, xmin, xmax, null, s.decimals);
+    const m = PR.machines.find(x=>x.id===sr.machine), last = m && m.latest[s.key];
+    const lbl = document.getElementById('pr-v-'+s.key);
+    if(lbl && last){
+      const st = last.state==='ok' ? '' : ' '+badge(last.state.toUpperCase(), last.state==='drift'?'warning':'critical');
+      lbl.innerHTML = `${last.value==null?'— no data':Number(last.value).toFixed(s.decimals)+' '+escapeHtml(s.unit)}`+
+        `${last.z==null?'':` · <span style="color:${Math.abs(last.z)>=3?'var(--warn)':'var(--text-faint)'}">z ${last.z>0?'+':''}${Number(last.z).toFixed(1)}</span>`}${st}`;
+    }
+  });
+  const trig = sr.ml.trigger || 1.6, ifs = sr.ml.iforest || sr.ml.score, aes = sr.ml.autoencoder || [], gss = sr.ml.gaussian || [];
+  prDrawChart('ml', [
+    {pts:[[xmin,trig],[xmax,trig]], color:'var(--text-faint)', dash:'5 4', width:1},
+    {pts:sr.ml.t.map((t,i)=>[t, ifs[i]]), color:'var(--high)', width:1.2},
+    {pts:sr.ml.t.map((t,i)=>[t, gss[i]]), color:PR_G_COLOR, width:1.3},
+    {pts:sr.ml.t.map((t,i)=>[t, aes[i]]), color:PR_AE_COLOR, width:1.6},
+  ], sr.injected.map(a=>({from:a.start, to:Math.min(a.end, sr.tNow), truth:true})), xmin, xmax, [0, 2], 1);
+  const n = sr.ml.t.length;
+  const lbl = document.getElementById('pr-v-ml');
+  if(lbl) lbl.innerHTML = n ? `<span style="color:var(--high)">IF ${(+ifs[n-1]).toFixed(1)}</span> · <span style="color:${PR_G_COLOR}">G ${(+(gss[n-1]||0)).toFixed(1)}</span> · <span style="color:${PR_AE_COLOR}">AE ${(+(aes[n-1]||0)).toFixed(1)}</span>` : '';
+}
+
+/* ---------- panels ---------- */
+function prRenderStatus(){
+  const st = PR.status, el = document.getElementById('pr-status'); if(!el || !st) return;
+  el.innerHTML = st.running ? badge('LIVE · t '+prFmtT(st.simT),'safe dot') : badge('PAUSED','warning dot');
+  const b = document.getElementById('pr-run'); if(b) b.innerHTML = st.running ? `${icon('clock',14)} Pause` : `${icon('arrow',14)} Resume`;
+  const sp = document.getElementById('pr-speed'); if(sp && document.activeElement!==sp) sp.value = st.speed;
+  const rt = document.getElementById('pr-rate'); if(rt && document.activeElement!==rt) rt.value = st.faultRatePerMin;
+}
+function prRenderTiles(){
+  const st = PR.status, el = document.getElementById('pr-tiles'); if(!el || !st) return;
+  const red = st.baselineAlerts ? Math.round((1 - st.notifications/st.baselineAlerts)*100) : null;
+  const sup = st.suppressed || {};
+  el.innerHTML = [
+    statTile('Readings processed', prFmtNum(st.readingsProcessed), `${st.machines} trucks × ${st.sensorsPerMachine} sensors`, '--accent'),
+    statTile('Detector hits', prFmtNum(st.detectorHits), `→ ${prFmtNum(st.incidents)} incidents`, '--info'),
+    statTile('Alerts sent', prFmtNum(st.notifications), red==null?'':(red>0?`${red}% fewer than fixed threshold (${prFmtNum(st.baselineAlerts)})`:`fixed threshold so far: ${prFmtNum(st.baselineAlerts)}`), '--safe'),
+    statTile('Kept from operators', prFmtNum((sup.ignore_tier||0)+(sup.grouped||0)+(sup.reopened||0)), `${sup.ignore_tier||0} logged · ${sup.grouped||0} grouped · ${sup.reopened||0} flaps`, '--info'),
+    statTile('Urgent open', st.urgentOpen, 'page on-call', st.urgentOpen?'--danger':'--safe'),
+    statTile('Monitor open', st.monitorOpen, 'maintenance queue', st.monitorOpen?'--warn':'--safe'),
+  ].join('');
+}
+function prRenderFleet(){
+  const el = document.getElementById('pr-fleet'); if(!el) return;
+  el.innerHTML = PR.machines.map(m=>`
+    <div class="pr-truck ${m.id===PR.machine?'sel':''}" style="--tc:${cssVar(PR_TIER_VAR[m.tier]||'--safe')}" onclick="prSelect('${m.id}')">
+      <div class="pr-truck-hd"><b>${m.id}</b><span class="mono" style="color:var(--text-faint)">${escapeHtml(m.assetNumber||'')}</span></div>
+      <div class="pr-truck-tier">${prTierBadge(m.tier)} ${m.severity?`<span class="mono">sev ${m.severity}</span>`:''}</div>
+      <div class="pr-truck-msg">${escapeHtml((m.rootCause && m.rootCause.title) || m.headline)}</div>
+      <div class="pr-truck-ft">${m.openIncidents} open · IF ${Number(m.ifScore!=null?m.ifScore:m.mlScore).toFixed(1)} · G ${Number(m.gaussScore||0).toFixed(1)} · AE ${Number(m.aeScore||0).toFixed(1)}</div>
+    </div>`).join('');
+}
+function prSelect(id){
+  PR.machine = id;
+  const sel = document.getElementById('pr-in-machine'); if(sel) sel.value = id;
+  prRenderFleet(); prTick();
+}
+function prRenderFeed(force){
+  const el = document.getElementById('pr-feed'); if(!el) return;
+  if(force){ document.querySelectorAll('.pr-seg button').forEach((b,i)=>b.classList.toggle('on', (i===0)===(PR.feedMode==='alerts'))); }
+  const items = PR.feed.filter(f=>PR.feedMode==='all' || f.feedKind==='alert').slice(0,40);
+  if(!items.length){ el.innerHTML = `<div class="empty-state" style="padding:26px">${icon('check',26)}<div>No alerts routed yet — inject a fault or wait for one</div></div>`; return; }
+  const kindTxt = {alert:'', grouped:'GROUPED', logged:'LOGGED ONLY', resolved:'RESOLVED'};
+  el.innerHTML = items.map(f=>{
+    const tier = f.feedKind==='resolved' ? 'OK' : f.tier;
+    const rc = f.rootCause && f.rootCause.title;
+    return `<div class="pr-item ${f.feedKind!=='alert'?'muted':''}" style="--sev-c:${cssVar(PR_TIER_VAR[tier]||'--info')}" onclick="prOpenIncident(${f.incidentId})">
+      <div class="pr-item-hd">${f.feedKind==='alert'?prTierBadge(f.tier):badge(kindTxt[f.feedKind],'info')}
+        ${f.kind==='escalation'?badge('ESCALATED','high'):''}
+        <span class="pr-item-t">${escapeHtml(f.title)}</span><span class="mono pr-item-time">${prFmtT(f.t)}</span></div>
+      ${rc?`<div class="pr-item-rc">${icon('wrench',12)} ${escapeHtml(rc)}</div>`:''}
+      <div class="pr-item-meta">sev ${f.severity}${f.route?' · '+escapeHtml(f.route):''}</div>
+    </div>`;}).join('');
+}
+function prRenderSummary(){
+  const el = document.getElementById('pr-summary'); const rep = PR.summary; if(!el || !rep) return;
+  const ev = rep.evaluation, af = ev.alertFatigue, cal = ev.severityCalibration;
+  const rows = Object.entries(ev.perScenario).map(([k,v])=>`<tr><td>${k.replace(/_/g,' ')}</td><td class="mono">${v.n}</td>
+    <td class="mono">${v.detected}</td><td class="mono">${v.typeCorrect}</td><td class="mono">${v.medianLatencyS==null?'—':v.medianLatencyS+'s'}</td></tr>`).join('');
+  const tiers = ['IGNORE','MONITOR','URGENT'];
+  const conf = tiers.map(tt=>`<tr><td>${prTierBadge(tt)}</td>${tiers.concat(['MISSED']).map(pt=>{
+    const v = cal.confusion[tt][pt]; const diag = tt===pt;
+    return `<td class="mono" style="${v?(diag?'color:var(--safe);font-weight:700':'color:var(--warn)'):'color:var(--text-faint)'}">${v}</td>`;}).join('')}</tr>`).join('');
+  const maxF = Math.max(af.detectorHits||1, 1);
+  const bar = (lbl, v, c) => `<div class="pr-fun"><span>${lbl}</span><div class="pr-fun-bar"><i style="width:${Math.max(1.5, Math.sqrt((v||0)/maxF)*100)}%;background:var(${c})"></i></div><b class="mono">${prFmtNum(v)}</b></div>`;
+  el.innerHTML = `${panelHead('Run evaluation', `${ev.faultsScored} injected faults scored · ${ev.window.hours} h simulated`)}
+    <div class="grid" style="margin-bottom:12px;grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">
+      ${statTile('Detection rate', prPct(ev.detectionRate), 'faults found', '--safe')}
+      ${statTile('Type accuracy', prPct(ev.typeAccuracy), 'spike / drift / dropout / stuck', '--accent')}
+      ${statTile('Tier accuracy', prPct(cal.exactTierAccuracy), `within one tier ${prPct(cal.withinOneTier)}`, '--warn')}
+      ${statTile('False alarms / h', ev.falseAlarms.notificationsPerHour, `precision ${prPct(af.notificationPrecision)}`, '--danger')}
+    </div>
+    <div class="pr-sum-grid">
+      <div><div class="pr-sub">Alert-fatigue funnel <small>(bar length √-scaled)</small></div>
+        ${bar('Detector hits', af.detectorHits, '--info')}${bar('Incidents', af.incidents, '--accent')}
+        ${bar('Alerts sent', af.notifications, '--safe')}${bar('Fixed-threshold baseline', af.baselineFixedThresholdAlerts, '--danger')}
+        <div class="pr-sub" style="margin-top:12px">Severity calibration <small>(rows truth · cols assigned)</small></div>
+        <table class="pr-mini"><tr><th></th><th>IGN</th><th>MON</th><th>URG</th><th>MISS</th></tr>${conf}</table></div>
+      <div><div class="pr-sub">Detection by fault type</div>
+        <table class="pr-mini"><tr><th>Fault</th><th>n</th><th>found</th><th>typed</th><th>latency</th></tr>${rows || '<tr><td colspan="5">no faults finished yet</td></tr>'}</table></div>
+    </div>`;
+}
+
+/* ---------- drawer ---------- */
+async function prOpenIncident(id){
+  if(id==null) return;
+  try{ PR.incident = await prFetch('/incidents/'+id); }catch(e){ pushToast('HIGH','Could not load incident', String(e.message||e)); return; }
+  openDrawer('anomaly', id);
+}
+function renderAnomalyDrawer(dr){
+  const i = PR.incident; if(!i){ closeDrawer(); return; }
+  const comps = Object.entries(i.components||{});
+  const rc = i.rootCause || {};
+  const info = Object.entries(i.info||{}).filter(([k])=>!k.startsWith('_') && k!=='top_sensor_keys');
+  dr.innerHTML = `
+    <div class="drawer-head">
+      <div><div class="panel-title">Incident #${i.id} · ${i.machine}</div><div class="view-sub">${escapeHtml(i.sensorLabel)} — ${({multivariate:'abnormal pattern (ML)', spike_burst:'spike burst'})[i.type]||i.type}</div></div>
+      <button class="drawer-close" onclick="closeDrawer()">${icon('x',18)}</button>
+    </div>
+    <div class="drawer-body">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">${prTierBadge(i.tier)} ${statusBadge(i.status==='OPEN'?'OPEN':'RESOLVED')}
+        <span class="mono" style="margin-left:auto;font-size:22px;font-weight:600">${i.severity}<small style="font-size:11px;color:var(--text-faint)">/100</small></span></div>
+      <div class="kv-row"><span class="k">Routed to</span><span class="v">${escapeHtml(i.route)}</span></div>
+      <div class="kv-row"><span class="k">Peak tier / severity</span><span class="v">${i.maxTier} / ${i.maxSeverity}</span></div>
+      <div class="kv-row"><span class="k">Opened · duration</span><span class="v mono">${prFmtT(i.openedT)} · ${i.durationS}s</span></div>
+      ${i.groupId && i.groupId!==i.id ? `<div class="kv-row"><span class="k">Grouped into</span><span class="v">alert #${i.groupId}</span></div>`:''}
+      <div class="pr-sub" style="margin-top:14px">Likely root cause</div>
+      <div class="pr-rc"><b>${escapeHtml(rc.title||'—')}</b>${rc.action?`<div>→ ${escapeHtml(rc.action)}</div>`:''}
+        ${(rc.evidence||[]).map(e=>`<div class="pr-ev">• ${escapeHtml(e)}</div>`).join('')}</div>
+      <div class="pr-sub" style="margin-top:14px">Why this severity</div>
+      ${comps.map(([k,v])=>`<div class="pr-fun"><span>${PR_COMP_LABEL[k]||k}</span><div class="pr-fun-bar"><i style="width:${Math.min(100,v/35*100)}%;background:${prTierColor(i.tier)}"></i></div><b class="mono">${v}</b></div>`).join('')}
+      <div class="pr-expl">${escapeHtml(i.explanation||'')}</div>
+      ${info.length?`<div class="pr-sub" style="margin-top:14px">Detector detail</div>${info.map(([k,v])=>`<div class="kv-row"><span class="k">${escapeHtml(PR_INFO_LABEL[k]||k)}</span><span class="v mono">${escapeHtml(k==='since'?prFmtT(v):Array.isArray(v)?v.join(', '):v==null?'—':v)}</span></div>`).join('')}`:''}
+      <div class="pr-sub" style="margin-top:14px">Technician verdict ${i.feedback?badge(PR_FB_LABEL[i.feedback]||i.feedback,'info'):''}</div>
+      <div class="pr-fb">
+        ${Object.entries(PR_FB_LABEL).map(([k,l])=>`<button class="btn sm ${i.feedback===k?'accent':''}" onclick="prFeedback(${i.id},'${k}')">${l}</button>`).join('')}
+      </div>
+      <div class="pr-expl" style="margin-top:6px">The system learns a severity correction for this kind of incident (${escapeHtml(i.type.replace('_',' '))} on ${escapeHtml(i.sensorLabel.toLowerCase())}) and applies it next time.</div>
+      ${(i.tierHistory||[]).length?`<div class="pr-sub" style="margin-top:14px">Tier history</div>${i.tierHistory.map(h=>`<div class="kv-row"><span class="k mono">${prFmtT(h.t)}</span><span class="v">${prTierBadge(h.tier)} sev ${h.severity}</span></div>`).join('')}`:''}
+    </div>`;
+}
+
+const PR_FB_LABEL = {right_call:'Right call', too_high:'Too urgent', too_low:'Not urgent enough', false_alarm:'False alarm'};
+async function prFeedback(id, label){
+  try{
+    const r = await prPost('/feedback', {incidentId:id, label});
+    const sensor = r.sensor==='*' ? 'any sensor' : r.sensor.replace(/_/g,' ');
+    pushToast('INFO', `Learned: ${PR_FB_LABEL[label]}`,
+      `Future ${r.type.replace('_',' ')} alerts on ${sensor}: ${r.learnedOffset>0?'+':''}${r.learnedOffset} severity`);
+    PR.learned = {learned:r.table}; prRenderLearned();
+    PR.incident = await prFetch('/incidents/'+id); renderDrawer();
+  }catch(e){ pushToast('HIGH','Feedback failed', String(e.message||e)); }
+}
+function prRenderLearned(){
+  const el = document.getElementById('pr-learned'); if(!el) return;
+  const rows = (PR.learned && PR.learned.learned) || [];
+  if(!rows.length){ el.innerHTML = '<div class="pr-expl" style="margin:0">No verdicts yet.</div>'; return; }
+  el.innerHTML = rows.slice(0,5).map(r=>`<div class="kv-row"><span class="k">${escapeHtml(r.type.replace('_',' '))} · ${escapeHtml(r.sensor==='*'?'any':r.sensor.replace(/_/g,' '))} <small style="color:var(--text-faint)">(${r.labels} verdict${r.labels>1?'s':''})</small></span>
+    <span class="v mono" style="color:${r.offset<0?'var(--safe)':r.offset>0?'var(--warn)':'var(--text-dim)'}">${r.offset>0?'+':''}${r.offset}</span></div>`).join('');
+}
+
+/* ---------- controls ---------- */
+async function prToggleRun(){ try{ PR.status = await prPost(PR.status&&PR.status.running?'/pause':'/start'); prRenderStatus(); }catch(e){ prSetOffline(e); } }
+async function prReset(){ try{ await prPost('/reset'); PR.lastAlertId=null; PR.summaryAt=0; pushToast('INFO','Anomaly stream reset','Baselines re-learned from a fresh warm-up'); prTick(); }catch(e){ prSetOffline(e); } }
+async function prSetSpeed(v){ try{ PR.status = await prPost('/speed',{speed:+v}); }catch(e){ prSetOffline(e); } }
+async function prSetRate(v){ try{ PR.status = await prPost('/fault-rate',{ratePerMin:+v}); }catch(e){ prSetOffline(e); } }
+async function prInject(scenario, sensor){
+  const machine = (document.getElementById('pr-in-machine')||{}).value || PR.machine;
+  scenario = scenario || document.getElementById('pr-in-scen').value;
+  if(sensor===undefined) sensor = (document.getElementById('pr-in-sensor')||{}).value || null;
+  try{
+    const r = await prPost('/inject', {scenario, machineId:machine, sensor});
+    const inj = r.injected;
+    pushToast('INFO', `Injected ${scenario.replace('_',' ')} on ${machine}`, `${inj.sensors.join(', ')} · truth tier ${inj.truthTier} · ${inj.end-inj.start+1}s`);
+    if(machine!==PR.machine) prSelect(machine);
+  }catch(e){ pushToast('HIGH','Injection failed', String(e.message||e)); }
+}
+async function prDownloadReport(){
+  try{
+    const md = await prFetch('/report.md');
+    const url = URL.createObjectURL(new Blob([md], {type:'text/markdown'}));
+    const a = document.createElement('a'); a.href = url; a.download = 'ark-predict-report.md';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url), 1500);
+  }catch(e){ pushToast('HIGH','Report unavailable', String(e.message||e)); }
+}
+/* ============================================================
+   ARK SHIELD — login + bootstrap
+   ============================================================ */
+let selectedRole = 'SAFETY_MANAGER';
+
+function buildLogin(){
+  const el = document.getElementById('login-screen');
+  el.innerHTML = `
+    <div class="login-card">
+      <div class="login-brand">${brandMark(30)}<span class="login-brand-text">ARK<b>SHIELD</b></span></div>
+      <p class="login-tag">Intelligent Safety for Industrial Mobility</p>
+      <div class="field"><label>Name</label><input id="login-name" type="text" placeholder="e.g. Jordan Reyes" value="Jordan Reyes"></div>
+      <div class="field">
+        <label>Role (demo — determines what you can see and do)</label>
+        <div class="role-grid" id="role-grid">
+          ${ROLES.map(r=>`<div class="role-opt ${r.id===selectedRole?'active':''}" data-role="${r.id}" onclick="pickRole('${r.id}')">
+            <span class="rname">${r.label}</span>${r.desc}
+          </div>`).join('')}
+        </div>
+      </div>
+      <button class="btn-primary" onclick="doLogin()">Enter Command Center</button>
+      <p class="login-note">Demo authentication only — no real credentials are stored or verified.</p>
+    </div>
+  `;
+}
+function pickRole(id){
+  selectedRole = id;
+  document.querySelectorAll('.role-opt').forEach(el=>el.classList.toggle('active', el.dataset.role===id));
+}
+function doLogin(){
+  const name = document.getElementById('login-name').value.trim() || 'Operator';
+  state.auth = {loggedIn:true, name, role:selectedRole};
+  document.getElementById('login-screen').style.display='none';
+  const app = document.getElementById('app');
+  app.classList.add('show');
+  buildShell();
+  state.activeView = NAV_ITEMS.find(n=>n.roles.includes(selectedRole)) ? state.activeView : 'overview';
+  if(!NAV_ITEMS.find(n=>n.id===state.activeView && n.roles.includes(selectedRole))){ state.activeView='overview'; }
+  renderSidebarNav();
+  renderCurrentView(false);
+  startSim();
+  predictBoot();
+  pushToast('INFO','Welcome to ARK Shield', roleLabel(selectedRole)+' access');
+}
+function logout(){
+  pauseSim();
+  predictStop();
+  state.auth = {loggedIn:false, name:'', role:null};
+  document.getElementById('app').classList.remove('show');
+  document.getElementById('login-screen').style.display='flex';
+}
+
+window.addEventListener('DOMContentLoaded', ()=>{
+  buildLogin();
+});
+</script>
+</body>
+</html>
