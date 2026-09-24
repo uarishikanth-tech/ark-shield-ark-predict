@@ -10,6 +10,8 @@ Access: with ANOMALY_PUBLIC_DEMO=true (the default, for the hackathon
 demo UI which has no real JWT) every route is open. Set it to false and
 reads require any logged-in user, controls require SAFETY_OR_FLEET.
 """
+import json
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -109,6 +111,37 @@ async def summary(include_faults: bool = Query(False, alias="includeFaults"), _u
 async def report(_u=Depends(_viewer)):
     md = report_markdown(anomaly_service.summary())
     return PlainTextResponse(md, headers={"Content-Disposition": 'attachment; filename="ark-predict-report.md"'})
+
+
+# ------------------------------------------------------------------
+# ML Lab — results on the real SKAB dataset (precomputed by
+# `python -m app.services.anomaly.skab SKAB/data --export`)
+# ------------------------------------------------------------------
+_BENCH_PATH = Path(__file__).resolve().parent.parent / "services" / "anomaly" / "results" / "skab_results.json"
+_bench_cache: dict = {}
+
+
+def _bench() -> dict:
+    if "data" not in _bench_cache:
+        if not _BENCH_PATH.exists():
+            raise AppError("No benchmark results yet — run: python -m app.services.anomaly.skab SKAB/data --export", 404)
+        _bench_cache["data"] = json.loads(_BENCH_PATH.read_text())
+    return _bench_cache["data"]
+
+
+@router.get("/benchmark")
+async def benchmark(_u=Depends(_viewer)):
+    """Model comparison on the real SKAB benchmark: every model, fixed-limit baseline, published leaderboard."""
+    return {k: v for k, v in _bench().items() if k != "replay"}
+
+
+@router.get("/benchmark/replay")
+async def benchmark_replay(experiment: str = Query(..., description="e.g. valve1/3"), _u=Depends(_viewer)):
+    """One real SKAB experiment: sensor traces, the labelled fault, and when each system raised an alarm."""
+    rep = _bench().get("replay", {})
+    if experiment not in rep:
+        raise AppError.not_found(f"Experiment {experiment}")
+    return {"experiment": experiment, **rep[experiment]}
 
 
 # ------------------------------------------------------------------
