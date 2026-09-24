@@ -398,6 +398,23 @@ table.pr-mini td,table.pr-mini th{padding:5px 6px;font-size:11.5px;}
 .pr-fb{display:flex;gap:6px;flex-wrap:wrap;}
 .pr-learned .kv-row{font-size:12px;}
 .pr-learned small{font-size:10.5px;}
+/* ML Lab */
+.ml-table td{white-space:nowrap;}
+.ml-table tr.ml-ours td{background:rgba(51,212,130,0.06);}
+.ml-table tr.ml-ours td:first-child{box-shadow:inset 3px 0 0 var(--safe);}
+.ml-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px;vertical-align:middle;}
+.ml-bar{display:inline-block;width:56px;height:6px;border-radius:3px;background:var(--hairline-soft);margin-right:8px;vertical-align:middle;overflow:hidden;}
+.ml-bar i{display:block;height:100%;border-radius:3px;}
+.ml-svg{width:100%;height:auto;display:block;}
+.ml-svg .ml-grid{stroke:var(--hairline-soft);stroke-width:1;}
+.ml-svg .ml-ax{fill:var(--text-faint);font-size:10.5px;}
+.ml-svg .ml-lab{fill:var(--text-dim);font-size:11.5px;}
+.ml-legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;font-size:11.5px;color:var(--text-dim);}
+.ml-legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle;}
+.ml-list{margin:0;padding-left:18px;font-size:12.5px;color:var(--text-dim);line-height:1.55;}
+.ml-list li{margin-bottom:8px;}
+.ml-list b{color:var(--text);}
+.ml-note{font-size:12px;color:var(--text-dim);margin-top:8px;}
 </style>
 </head>
 <body>
@@ -449,6 +466,7 @@ const NAV_ITEMS = [
   {id:'zones', label:'Zones', icon:'layers', roles:['SUPER_ADMIN','SAFETY_MANAGER']},
   {id:'maintenance', label:'Maintenance', icon:'wrench', roles:['SUPER_ADMIN','FLEET_MANAGER']},
   {id:'predict', label:'ARK Predict', icon:'brain', roles:['SUPER_ADMIN','SAFETY_MANAGER','FLEET_MANAGER']},
+  {id:'mllab', label:'ML Lab', icon:'chart', roles:['SUPER_ADMIN','SAFETY_MANAGER','FLEET_MANAGER']},
   {id:'settings', label:'Settings', icon:'settings', roles:['SUPER_ADMIN']},
 ];
 
@@ -1065,7 +1083,7 @@ function renderCurrentView(isTick){
     overview: renderOverview, vision: renderVision, proximity: renderProximity,
     fleet: renderFleet, livemap: renderLiveMap, events: renderEvents, alerts: renderAlerts,
     analytics: renderAnalytics, operators: renderOperators, devices: renderDevices,
-    zones: renderZones, maintenance: renderMaintenance, predict: renderPredict, settings: renderSettings,
+    zones: renderZones, maintenance: renderMaintenance, predict: renderPredict, mllab: renderMLLab, settings: renderSettings,
   };
   const fn = renderers[state.activeView] || renderOverview;
   root.innerHTML = fn();
@@ -2338,6 +2356,163 @@ function logout(){
 window.addEventListener('DOMContentLoaded', ()=>{
   buildLogin();
 });
+
+/* ============================================================
+   ML LAB — ARK Predict on real industrial data (SKAB benchmark)
+   ============================================================ */
+const ML = {data:null, err:null, loading:false, exp:null, rep:null};
+async function mlLoad(){
+  if(ML.loading) return; ML.loading = true;
+  try{
+    ML.data = await prFetch('/benchmark'); ML.err = null;
+    if(!ML.exp) ML.exp = ML.data.experiments.includes('valve1/1') ? 'valve1/1' : ML.data.experiments[0];
+    ML.rep = await prFetch('/benchmark/replay?experiment='+encodeURIComponent(ML.exp));
+  }catch(e){ ML.err = String((e && e.message) || e); }
+  finally{ ML.loading = false; if(state.activeView==='mllab') renderCurrentView(false); }
+}
+async function mlPick(v){
+  ML.exp = v;
+  try{ ML.rep = await prFetch('/benchmark/replay?experiment='+encodeURIComponent(v)); }catch(e){ ML.rep = null; }
+  const el = document.getElementById('ml-replay'); if(el) el.innerHTML = mlReplaySvg();
+}
+function mlRow(key){ return ML.data ? ML.data.rows.find(r=>r.key===key) : null; }
+function mlFmt(v, d){ return v==null ? '—' : Number(v).toFixed(d==null?2:d); }
+
+const ML_FAMILY_VAR = {'baseline':'--high','statistical':'--info','classical ML':'--accent','deep learning':'#A78BFA',
+  'ensemble':'#2DD4BF','supervised ML':'#E879F9','ours':'#FACC15','ours (hybrid)':'--safe'};
+function mlColor(f){ const v = ML_FAMILY_VAR[f] || '--info'; return v.startsWith('--') ? cssVar(v) : v; }
+
+function renderMLLab(){
+  if(!ML.data && !ML.loading && !ML.err) setTimeout(mlLoad, 0);
+  const head = `<div class="view-head"><div><div class="view-title">ML Lab — tested on real industrial data</div>
+    <div class="view-sub">SKAB benchmark (Skoltech Anomaly Benchmark) · 34 real water-pump experiments · 8 sensors · hand-labelled faults · official leaderboard protocol · every model is causal, like the live stream</div></div></div>`;
+  if(ML.err) return head + `<div class="notice-box danger">Could not load the benchmark results (${escapeHtml(ML.err)}). Start the backend with <span class="mono">uvicorn app.main:app --port 4000</span> — results ship in <span class="mono">app/services/anomaly/results/skab_results.json</span>.</div>`;
+  if(!ML.data) return head + `<div class="empty-state" style="padding:40px">Loading benchmark results…</div>`;
+  const d = ML.data, fx = mlRow('fixed'), hy = mlRow('hybrid_past') || mlRow('hybrid') || mlRow('supervised'), hyl = mlRow('hybrid_lfo');
+  const best = d.leaderboard.reduce((a,b)=>b.f1>a.f1?b:a);
+  const nModels = new Set(d.rows.filter(r=>!['baseline','ours'].includes(r.family)).map(r=>r.key.replace('+','').replace(/_(lfo|past)$/,''))).size;
+  const up = hy.tiers && hy.tiers.urgent_precision!=null ? Math.round(hy.tiers.urgent_precision*100)+'%' : '—';
+  const tiles = [
+    statTile('False-alarm episodes / hour', `${mlFmt(fx.false_alarm_episodes_per_h,0)} → ${mlFmt(hy.false_alarm_episodes_per_h,1)}`, 'fixed 3σ limit → ARK Predict v2', '--safe'),
+    statTile('False-alarm rate', `${mlFmt(fx.far,0)}% → ${mlFmt(hy.far,0)}%`, 'share of normal seconds flagged', '--safe'),
+    statTile('F1 on real faults', `${mlFmt(fx.f1)} → ${mlFmt(hy.f1)}`, `v2 trained only on earlier experiments · best published (unsupervised): ${best.f1}`, '--accent'),
+    statTile('Faults caught', `${hy.faults_caught}/${hy.faults}`, `median ${mlFmt(hy.median_delay_s,0)} s after onset`, '--accent'),
+    statTile('URGENT alarms that were real', up, 'the rest of v2’s alarms go to MONITOR, not a pager', '--danger'),
+    statTile('Never-seen fault types', hyl?mlFmt(hyl.f1):'—', `v2 F1 with that fault family left out of training · ${nModels} models compared`, '--warn'),
+  ].join('');
+  const auc = d.auc || {};
+  const rows = d.rows.map(r=>{
+    const base = r.key.replace('+','');
+    const a = auc[base] || {};
+    const views = Object.keys(a);
+    const aucTxt = (r.mode==='plain' && views.length>1) ? `${mlFmt(a[views[0]],3)} → ${mlFmt(Math.max(...views.slice(1).map(v=>a[v])),3)}`
+      : (r.family==='supervised ML' && a.raw!=null ? mlFmt(a.raw,3) : '');
+    const ours = r.family.startsWith('ours');
+    return `<tr class="${ours?'ml-ours':''}">
+      <td><span class="ml-dot" style="background:${mlColor(r.family)}"></span>${escapeHtml(r.label)}</td>
+      <td style="color:var(--text-dim)">${escapeHtml(r.family)}</td>
+      <td style="color:var(--text-dim)">${escapeHtml(r.mode)}</td>
+      <td class="mono"><div class="ml-bar"><i style="width:${r.f1*100}%;background:var(--accent)"></i></div>${mlFmt(r.f1)}</td>
+      <td class="mono"><div class="ml-bar"><i style="width:${r.far}%;background:var(--high)"></i></div>${mlFmt(r.far,1)}</td>
+      <td class="mono">${mlFmt(r.mar,1)}</td>
+      <td class="mono">${r.faults_caught}/${r.faults}</td>
+      <td class="mono">${mlFmt(r.false_alarm_episodes_per_h,1)}</td>
+      <td class="mono" style="color:var(--text-dim)">${aucTxt}</td></tr>`;
+  }).join('');
+  const expOpts = ['valve1','valve2','other'].map(g=>`<optgroup label="${g}">${d.experiments.filter(e=>e.startsWith(g+'/')).map(e=>`<option ${e===ML.exp?'selected':''}>${e}</option>`).join('')}</optgroup>`).join('');
+  return head + `
+    <div class="grid g-stats">${tiles}</div>
+    <div class="panel" style="margin-top:14px">
+      <div class="panel-head"><div class="panel-title">Replay a real experiment<small>top: real sensor traces · red band = the fault as labelled by SKAB · bottom: when each system raised an alarm</small></div>
+        <select onchange="mlPick(this.value)">${expOpts}</select></div>
+      <div id="ml-replay">${mlReplaySvg()}</div>
+    </div>
+    <div class="grid g-2" style="margin-top:14px">
+      <div class="panel">${panelHead('False alarms vs missed faults','each dot is a model · lower-left is better · hollow = plain, filled = improved (drift-robust inputs + tuned alarm logic) · grey = published SKAB leaderboard')}
+        ${mlScatterSvg()}</div>
+      <div class="panel">${panelHead('How we kept it honest')}
+        <ul class="ml-list">
+          <li><b>Real data, official protocol.</b> First 400 s of each experiment train the model, the rest is test; metrics pooled over all 34 test sets — the published leaderboard's own predictions give exactly the published numbers through our metric code (unit-tested).</li>
+          <li><b>No peeking.</b> Settings for a fault family (valve1 / valve2 / other) are tuned only on the other two families.</li>
+          <li><b>Causal.</b> Every score uses only the past, exactly like the live stream.</li>
+          <li><b>Base rate.</b> ${Math.round(d.dataset.anomalous_share*100)}% of test seconds are faulty, so “alarm always” already scores F1 ${d.dataset.always_alarm_f1}. That is why we report false-alarm rate and false-alarm episodes next to F1.</li>
+          <li><b>Three supervised checks.</b> Leave-one-experiment-out (overlapping recordings held out together), a whole fault family unseen in training, and the realistic one shown in the tiles: trained only on experiments recorded <i>before</i> the one being scored.</li>
+          <li><b>Deep learning without a framework.</b> Conv-1D and LSTM autoencoders written in numpy with hand-written backprop, gradient-checked in the tests.</li>
+        </ul></div>
+    </div>
+    <div class="panel" style="margin-top:14px">${panelHead('Every model on the same data', `${d.dataset.files} experiments · ${d.dataset.test_rows.toLocaleString()} test seconds · AUC = threshold-free ranking quality (raw inputs → drift-robust inputs)`)}
+      <div class="table-wrap"><table class="ml-table"><tr><th>Model</th><th>Family</th><th>Setting</th><th>F1 ↑</th><th>FAR % ↓</th><th>MAR % ↓</th><th>Faults caught</th><th>False-alarm episodes/h ↓</th><th>AUC ↑</th></tr>${rows}</table></div>
+    </div>
+    <div class="panel" style="margin-top:14px">${panelHead('Published SKAB leaderboard (same protocol)')}
+      <div class="table-wrap"><table class="ml-table"><tr><th>Algorithm</th><th>F1</th><th>FAR %</th><th>MAR %</th></tr>
+      ${d.leaderboard.map(r=>`<tr><td>${escapeHtml(r.label)}</td><td class="mono">${r.f1}</td><td class="mono">${r.far}</td><td class="mono">${r.mar}</td></tr>`).join('')}</table></div>
+    </div>`;
+}
+
+function mlScatterSvg(){
+  const d = ML.data, W = 560, H = 360, L = 46, B = 36, T = 12, R = 14;
+  const x = v => L + v/100*(W-L-R), y = v => H - B - v/100*(H-T-B);
+  let g = '';
+  for(let v=0; v<=100; v+=20){
+    g += `<line x1="${x(v)}" y1="${T}" x2="${x(v)}" y2="${H-B}" class="ml-grid"/><text x="${x(v)}" y="${H-B+14}" class="ml-ax" text-anchor="middle">${v}</text>`;
+    g += `<line x1="${L}" y1="${y(v)}" x2="${W-R}" y2="${y(v)}" class="ml-grid"/><text x="${L-6}" y="${y(v)+3}" class="ml-ax" text-anchor="end">${v}</text>`;
+  }
+  g += `<text x="${(L+W-R)/2}" y="${H-4}" class="ml-ax" text-anchor="middle">false-alarm rate % (normal seconds flagged) →</text>`;
+  g += `<text x="12" y="${(T+H-B)/2}" class="ml-ax" text-anchor="middle" transform="rotate(-90 12 ${(T+H-B)/2})">missed-alarm rate % →</text>`;
+  d.leaderboard.forEach(r=>{ g += `<circle cx="${x(r.far)}" cy="${y(r.mar)}" r="4.5" fill="none" stroke="var(--text-faint)" stroke-width="1.5"><title>${escapeHtml(r.label)} (published) · F1 ${r.f1} · FAR ${r.far}% · MAR ${r.mar}%</title></circle>`; });
+  const byKey = {}; d.rows.forEach(r=>byKey[r.key]=r);
+  d.rows.forEach(r=>{
+    if(r.key.endsWith('+') && byKey[r.key.slice(0,-1)]){
+      const p = byKey[r.key.slice(0,-1)];
+      g += `<line x1="${x(p.far)}" y1="${y(p.mar)}" x2="${x(r.far)}" y2="${y(r.mar)}" stroke="${mlColor(r.family)}" stroke-width="1" stroke-dasharray="3 3" opacity=".6"/>`;
+    }
+  });
+  d.rows.forEach(r=>{
+    const c = mlColor(r.family), filled = r.mode!=='plain';
+    const big = r.key===(byKey['hybrid_past']?'hybrid_past':'hybrid') ? 8 : r.family.startsWith('ours') ? 6 : 5;
+    g += `<circle cx="${x(r.far)}" cy="${y(r.mar)}" r="${big}" fill="${filled?c:'var(--panel)'}" stroke="${c}" stroke-width="2"><title>${escapeHtml(r.label)} · ${escapeHtml(r.mode)} · F1 ${r.f1} · FAR ${r.far}% · MAR ${r.mar}% · ${r.false_alarm_episodes_per_h} false-alarm episodes/h</title></circle>`;
+  });
+  const hy = byKey['hybrid_past'] || byKey['hybrid'], fx = byKey['fixed'];
+  if(hy) g += `<text x="${x(hy.far)+10}" y="${y(hy.mar)+4}" class="ml-lab">ARK Predict v2</text>`;
+  if(fx) g += `<text x="${x(fx.far)+9}" y="${y(fx.mar)+4}" class="ml-lab">Fixed 3σ limit</text>`;
+  const fams = [...new Set(d.rows.map(r=>r.family))];
+  const legend = fams.map(f=>`<span><i style="background:${mlColor(f)}"></i>${escapeHtml(f)}</span>`).join('') + `<span><i style="background:none;border:1.5px solid var(--text-faint)"></i>published</span>`;
+  return `<svg viewBox="0 0 ${W} ${H}" class="ml-svg">${g}</svg><div class="ml-legend">${legend}</div>`;
+}
+
+function mlReplaySvg(){
+  const r = ML.rep; if(!r) return '<div class="empty-state" style="padding:30px">Pick an experiment…</div>';
+  const W = 1000, n = r.rows, L = 150, R = 8, rowH = 58, gap = 8, trackH = 16, TOP = 16;
+  const names = Object.keys(r.sensors);
+  const tracks = [['Labelled fault', r.fault, '--info'], ['Fixed 3σ limit', r.alarms.fixed||[], '--high'],
+                  ['ARK v2 URGENT', r.alarms.urgent||[], '--danger'], ['ARK v2 MONITOR', r.alarms.monitor||[], '--warn']];
+  const H = TOP + names.length*(rowH+gap) + 14 + tracks.length*(trackH+6) + 18;
+  const X = i => L + i/(n-1)*(W-L-R);
+  let g = `<rect x="${X(0)}" y="${TOP}" width="${X(r.train_rows)-X(0)}" height="${names.length*(rowH+gap)}" fill="var(--text-faint)" opacity=".08"/>
+    <text x="${X(r.train_rows/2)}" y="11" class="ml-ax" text-anchor="middle">training (healthy start)</text>`;
+  r.fault.forEach(([a,b])=>{ g += `<rect x="${X(a)}" y="${TOP}" width="${X(b-1)-X(a)}" height="${names.length*(rowH+gap)}" fill="var(--danger)" opacity=".10"/>
+    <text x="${(X(a)+X(b-1))/2}" y="11" class="ml-ax" text-anchor="middle">labelled fault</text>`; });
+  names.forEach((s,k)=>{
+    const v = r.sensors[s], y0 = TOP + k*(rowH+gap);
+    const lo = Math.min(...v), hi = Math.max(...v), span = (hi-lo)||1;
+    let path = '';
+    for(let i=0;i<v.length;i+=1) path += (i?'L':'M') + X(i).toFixed(1) + ' ' + (y0+rowH-4-(v[i]-lo)/span*(rowH-8)).toFixed(1);
+    g += `<text x="${L-8}" y="${y0+rowH/2+4}" class="ml-lab" text-anchor="end">${escapeHtml(s.replace('RMS',''))}</text>
+      <line x1="${L}" y1="${y0+rowH}" x2="${W-R}" y2="${y0+rowH}" class="ml-grid"/>
+      <path d="${path}" fill="none" stroke="var(--accent)" stroke-width="1.2"/>`;
+  });
+  let ty = TOP + names.length*(rowH+gap) + 14;
+  tracks.forEach(([lab, segs, c])=>{
+    g += `<text x="${L-8}" y="${ty+12}" class="ml-lab" text-anchor="end">${lab}</text>
+      <rect x="${L}" y="${ty}" width="${W-L-R}" height="${trackH}" rx="3" fill="var(--panel-2)"/>`;
+    segs.forEach(([a,b])=>{ g += `<rect x="${X(a)}" y="${ty}" width="${Math.max(2, X(b-1)-X(a))}" height="${trackH}" rx="3" fill="${cssVar(c)}"/>`; });
+    ty += trackH + 6;
+  });
+  for(let s=0; s<n; s+=200) g += `<text x="${X(s)}" y="${H-2}" class="ml-ax" text-anchor="middle">${s}s</text>`;
+  const cnt = k => (r.alarms[k]||[]).length;
+  return `<svg viewBox="0 0 ${W} ${H}" class="ml-svg">${g}</svg>
+    <div class="ml-note">${escapeHtml(ML.exp)} · fixed limit raised <b>${cnt('fixed')}</b> separate alarms · ARK Predict v2 raised <b>${cnt('urgent')}</b> urgent and <b>${cnt('monitor')}</b> monitor alarms</div>`;
+}
 </script>
 </body>
 </html>
