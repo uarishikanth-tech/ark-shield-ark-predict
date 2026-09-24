@@ -397,6 +397,8 @@ table.pr-mini td,table.pr-mini th{padding:5px 6px;font-size:11.5px;}
 .pr-expl{font-size:11.5px;color:var(--text-faint);margin-top:8px;line-height:1.45;}
 .pr-fb{display:flex;gap:6px;flex-wrap:wrap;}
 .pr-learned .kv-row{font-size:12px;}
+.pr-truck-diag{margin-top:6px;font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:5px;}
+.pr-truck-diag.on{color:var(--accent);font-weight:600;}
 .pr-learned small{font-size:10.5px;}
 /* ML Lab */
 .ml-table td{white-space:nowrap;}
@@ -1972,8 +1974,8 @@ async function prRefresh(){
   prRenderStatus(); prRenderTiles(); prRenderFleet(); prUpdateCharts(); prRenderFeed();
   if(Date.now()-PR.summaryAt > 6000){
     PR.summaryAt = Date.now();
-    const [sum, fb] = await Promise.all([prFetch('/summary'), prFetch('/feedback').catch(()=>null)]);
-    PR.summary = sum; PR.learned = fb; prRenderSummary(); prRenderLearned();
+    const [sum, fb, mdl] = await Promise.all([prFetch('/summary'), prFetch('/feedback').catch(()=>null), prFetch('/model').catch(()=>null)]);
+    PR.summary = sum; PR.learned = fb; PR.model = mdl; prRenderSummary(); prRenderLearned(); prRenderModel();
   }
 }
 
@@ -2045,6 +2047,8 @@ function renderPredict(){
           ${[0,0.4,0.8,1.5,3].map(r=>`<option value="${r}" ${PR.status&&PR.status.faultRatePerMin===r?'selected':''}>${r} / min</option>`).join('')}</select></span></div>
         <div class="pr-sub" style="margin-top:14px">Learned from technicians <small>(open an incident → give a verdict)</small></div>
         <div id="pr-learned" class="pr-learned"><div class="pr-expl" style="margin:0">No verdicts yet.</div></div>
+        <div class="pr-sub" style="margin-top:14px">Fault classifier — ARK Predict v2 <small>(supervised ML: names which fault)</small></div>
+        <div id="pr-model" class="pr-learned"><div class="pr-expl" style="margin:0">Loading…</div></div>
         <div class="notice-box" style="margin-top:12px">Simulated sensor data. Severity scores are a decision-support aid for maintenance triage, not a certified safety system.</div>
       </div>
     </div>`;
@@ -2166,7 +2170,15 @@ function prRenderFleet(){
       <div class="pr-truck-tier">${prTierBadge(m.tier)} ${m.severity?`<span class="mono">sev ${m.severity}</span>`:''}</div>
       <div class="pr-truck-msg">${escapeHtml((m.rootCause && m.rootCause.title) || m.headline)}</div>
       <div class="pr-truck-ft">${m.openIncidents} open · IF ${Number(m.ifScore!=null?m.ifScore:m.mlScore).toFixed(1)} · G ${Number(m.gaussScore||0).toFixed(1)} · AE ${Number(m.aeScore||0).toFixed(1)}</div>
+      ${prDiagLine(m.diagnosis)}
     </div>`).join('');
+}
+const PR_FAULT_LABEL = {normal:'normal', drift:'sensor drift', dropout:'sensor dropout', stuck:'stuck sensor', bearing_wear:'bearing wear',
+  hydraulic_leak:'hydraulic leak', battery_fade:'battery fade', oscillation:'mast / chain oscillation', overload:'overload lift'};
+function prDiagLine(d){
+  if(!d || d.fault==='normal' || (!d.confirmed && d.confidence<0.5)) return '';
+  const pct = Math.round(d.confidence*100);
+  return `<div class="pr-truck-diag ${d.confirmed?'on':''}" title="ARK v2 fault classifier (supervised ML)">${icon('brain',11)} ${d.confirmed?'':'maybe '}${escapeHtml(PR_FAULT_LABEL[d.fault]||d.fault)} · ${pct}%</div>`;
 }
 function prSelect(id){
   PR.machine = id;
@@ -2245,11 +2257,18 @@ function renderAnomalyDrawer(dr){
       <div class="pr-sub" style="margin-top:14px">Likely root cause</div>
       <div class="pr-rc"><b>${escapeHtml(rc.title||'—')}</b>${rc.action?`<div>→ ${escapeHtml(rc.action)}</div>`:''}
         ${(rc.evidence||[]).map(e=>`<div class="pr-ev">• ${escapeHtml(e)}</div>`).join('')}</div>
+      ${i.mlDiagnosis?`<div class="pr-sub" style="margin-top:14px">Fault classifier (ARK v2)</div>
+        <div class="pr-rc"><b>${escapeHtml(i.mlDiagnosis.label)}</b> · ${Math.round(i.mlDiagnosis.confidence*100)}% confident
+        <div class="pr-ev">Supervised gradient boosting, trained on labelled faults — names what the detectors found.</div></div>`:''}
       <div class="pr-sub" style="margin-top:14px">Why this severity</div>
       ${comps.map(([k,v])=>`<div class="pr-fun"><span>${PR_COMP_LABEL[k]||k}</span><div class="pr-fun-bar"><i style="width:${Math.min(100,v/35*100)}%;background:${prTierColor(i.tier)}"></i></div><b class="mono">${v}</b></div>`).join('')}
       <div class="pr-expl">${escapeHtml(i.explanation||'')}</div>
       ${info.length?`<div class="pr-sub" style="margin-top:14px">Detector detail</div>${info.map(([k,v])=>`<div class="kv-row"><span class="k">${escapeHtml(PR_INFO_LABEL[k]||k)}</span><span class="v mono">${escapeHtml(k==='since'?prFmtT(v):Array.isArray(v)?v.join(', '):v==null?'—':v)}</span></div>`).join('')}`:''}
       <div class="pr-sub" style="margin-top:14px">Technician verdict ${i.feedback?badge(PR_FB_LABEL[i.feedback]||i.feedback,'info'):''}</div>
+      <div class="kv-row" style="margin:4px 0 8px"><span class="k">What was it actually?</span><span class="v"><select id="pr-fb-type">
+        <option value="">${i.mlDiagnosis?'as the classifier says ('+escapeHtml(PR_FAULT_LABEL[i.mlDiagnosis.fault]||i.mlDiagnosis.fault)+')':'not sure'}</option>
+        ${Object.entries(PR_FAULT_LABEL).filter(([k])=>k!=='normal').map(([k,l])=>`<option value="${k}">${escapeHtml(l)}</option>`).join('')}
+      </select></span></div>
       <div class="pr-fb">
         ${Object.entries(PR_FB_LABEL).map(([k,l])=>`<button class="btn sm ${i.feedback===k?'accent':''}" onclick="prFeedback(${i.id},'${k}')">${l}</button>`).join('')}
       </div>
@@ -2261,13 +2280,41 @@ function renderAnomalyDrawer(dr){
 const PR_FB_LABEL = {right_call:'Right call', too_high:'Too urgent', too_low:'Not urgent enough', false_alarm:'False alarm'};
 async function prFeedback(id, label){
   try{
-    const r = await prPost('/feedback', {incidentId:id, label});
+    const ft = (document.getElementById('pr-fb-type')||{}).value || null;
+    const r = await prPost('/feedback', {incidentId:id, label, faultType:ft});
     const sensor = r.sensor==='*' ? 'any sensor' : r.sensor.replace(/_/g,' ');
+    const cl = r.classifierLabel;
     pushToast('INFO', `Learned: ${PR_FB_LABEL[label]}`,
-      `Future ${r.type.replace('_',' ')} alerts on ${sensor}: ${r.learnedOffset>0?'+':''}${r.learnedOffset} severity`);
+      `Future ${r.type.replace('_',' ')} alerts on ${sensor}: ${r.learnedOffset>0?'+':''}${r.learnedOffset} severity` +
+      (cl && cl.added ? ` · ${cl.added} s saved as “${PR_FAULT_LABEL[cl.faultType]||cl.faultType}” training data for the fault classifier` : ''));
+    PR.modelAt = 0;
     PR.learned = {learned:r.table}; prRenderLearned();
     PR.incident = await prFetch('/incidents/'+id); renderDrawer();
   }catch(e){ pushToast('HIGH','Feedback failed', String(e.message||e)); }
+}
+function prRenderModel(){
+  const el = document.getElementById('pr-model'); if(!el) return;
+  const m = PR.model;
+  if(!m || !m.enabled){ el.innerHTML = '<div class="pr-expl" style="margin:0">Classifier not enabled.</div>'; return; }
+  if(m.error){ el.innerHTML = `<div class="pr-expl" style="margin:0">${escapeHtml(m.error)}</div>`; return; }
+  if(!m.trained){ el.innerHTML = '<div class="pr-expl" style="margin:0">Loading the saved model…</div>'; return; }
+  const ev = m.evaluation || {};
+  const pend = m.pendingLabels || [];
+  el.innerHTML = `
+    <div class="kv-row"><span class="k">Model</span><span class="v">gradient boosting · ${m.classes.length-1} fault types · v${m.version}</span></div>
+    ${ev.faultTypeAccuracy!=null?`<div class="kv-row"><span class="k">Right fault type on unseen runs</span><span class="v mono">${Math.round(ev.faultTypeAccuracy*100)}% of ${ev.faultsTested}</span></div>`:''}
+    <div class="kv-row"><span class="k">Training data</span><span class="v mono">${(m.trainRows||0).toLocaleString()} labelled truck-seconds</span></div>
+    <div class="kv-row"><span class="k">From technicians</span><span class="v mono">${m.feedbackWindows||0} used · ${pend.length} new verdict${pend.length===1?'':'s'}</span></div>
+    ${pend.slice(0,3).map(p=>`<div class="kv-row"><span class="k" style="color:var(--text-faint)">#${p.incidentId} ${escapeHtml(p.machine)}</span><span class="v">${escapeHtml(PR_FAULT_LABEL[p.faultType]||p.faultType)} · ${p.rows}s</span></div>`).join('')}
+    <button class="btn sm accent" style="margin-top:8px" id="pr-retrain" onclick="prRetrain()" ${PR.retraining?'disabled':''}>${PR.retraining?'Retraining… (~1 min)':'Retrain with technician labels'}</button>`;
+}
+async function prRetrain(){
+  PR.retraining = true; prRenderModel();
+  try{
+    const r = await prPost('/model/retrain');
+    pushToast('INFO', `Fault classifier retrained (v${r.version})`, `${(r.trainRows||0).toLocaleString()} rows incl. ${r.feedbackRows||0} technician-labelled seconds · ${r.lastTrainSeconds}s`);
+  }catch(e){ pushToast('HIGH','Retrain failed', String(e.message||e)); }
+  PR.retraining = false; PR.model = await prFetch('/model').catch(()=>PR.model); prRenderModel();
 }
 function prRenderLearned(){
   const el = document.getElementById('pr-learned'); if(!el) return;
@@ -2360,19 +2407,21 @@ window.addEventListener('DOMContentLoaded', ()=>{
 /* ============================================================
    ML LAB — ARK Predict on real industrial data (SKAB benchmark)
    ============================================================ */
-const ML = {data:null, err:null, loading:false, exp:null, rep:null};
+const ML = {data:null, err:null, loading:false, exp:null, rep:null, dataset:'skab'};
+const ML_DEFAULT_EXP = {skab:'valve1/1', forklift:'load/hydraulic_leak_0'};
 async function mlLoad(){
   if(ML.loading) return; ML.loading = true;
   try{
-    ML.data = await prFetch('/benchmark'); ML.err = null;
-    if(!ML.exp) ML.exp = ML.data.experiments.includes('valve1/1') ? 'valve1/1' : ML.data.experiments[0];
-    ML.rep = await prFetch('/benchmark/replay?experiment='+encodeURIComponent(ML.exp));
+    ML.data = await prFetch('/benchmark?dataset='+ML.dataset); ML.err = null;
+    if(!ML.exp) ML.exp = ML.data.experiments.includes(ML_DEFAULT_EXP[ML.dataset]) ? ML_DEFAULT_EXP[ML.dataset] : ML.data.experiments[0];
+    ML.rep = await prFetch('/benchmark/replay?dataset='+ML.dataset+'&experiment='+encodeURIComponent(ML.exp));
   }catch(e){ ML.err = String((e && e.message) || e); }
   finally{ ML.loading = false; if(state.activeView==='mllab') renderCurrentView(false); }
 }
+function mlSetDataset(d){ if(d===ML.dataset) return; ML.dataset = d; ML.data = null; ML.exp = null; ML.rep = null; ML.err = null; renderCurrentView(false); }
 async function mlPick(v){
   ML.exp = v;
-  try{ ML.rep = await prFetch('/benchmark/replay?experiment='+encodeURIComponent(v)); }catch(e){ ML.rep = null; }
+  try{ ML.rep = await prFetch('/benchmark/replay?dataset='+ML.dataset+'&experiment='+encodeURIComponent(v)); }catch(e){ ML.rep = null; }
   const el = document.getElementById('ml-replay'); if(el) el.innerHTML = mlReplaySvg();
 }
 function mlRow(key){ return ML.data ? ML.data.rows.find(r=>r.key===key) : null; }
@@ -2384,18 +2433,20 @@ function mlColor(f){ const v = ML_FAMILY_VAR[f] || '--info'; return v.startsWith
 
 function renderMLLab(){
   if(!ML.data && !ML.loading && !ML.err) setTimeout(mlLoad, 0);
-  const head = `<div class="view-head"><div><div class="view-title">ML Lab — tested on real industrial data</div>
-    <div class="view-sub">SKAB benchmark (Skoltech Anomaly Benchmark) · 34 real water-pump experiments · 8 sensors · hand-labelled faults · official leaderboard protocol · every model is causal, like the live stream</div></div></div>`;
+  const sk = ML.dataset==='skab';
+  const head = `<div class="view-head"><div><div class="view-title">ML Lab — ${sk?'tested on real industrial data':'tested on labelled forklift runs'}</div>
+    <div class="view-sub">${sk?'SKAB benchmark (Skoltech Anomaly Benchmark) · 34 real water-pump experiments · 8 sensors · hand-labelled faults · official leaderboard protocol':'40 simulated forklift runs · 5 sensors + load · 8 injected, labelled fault types · same protocol as SKAB (first 400 s train, rest test)'} · every model is causal, like the live stream</div></div>
+    <div class="view-actions"><div class="pr-seg"><button class="${sk?'on':''}" onclick="mlSetDataset('skab')">Real pump data (SKAB)</button><button class="${sk?'':'on'}" onclick="mlSetDataset('forklift')">Forklift data</button></div></div></div>`;
   if(ML.err) return head + `<div class="notice-box danger">Could not load the benchmark results (${escapeHtml(ML.err)}). Start the backend with <span class="mono">uvicorn app.main:app --port 4000</span> — results ship in <span class="mono">app/services/anomaly/results/skab_results.json</span>.</div>`;
   if(!ML.data) return head + `<div class="empty-state" style="padding:40px">Loading benchmark results…</div>`;
   const d = ML.data, fx = mlRow('fixed'), hy = mlRow('hybrid_past') || mlRow('hybrid') || mlRow('supervised'), hyl = mlRow('hybrid_lfo');
-  const best = d.leaderboard.reduce((a,b)=>b.f1>a.f1?b:a);
+  const best = d.leaderboard.length ? d.leaderboard.reduce((a,b)=>b.f1>a.f1?b:a) : null;
   const nModels = new Set(d.rows.filter(r=>!['baseline','ours'].includes(r.family)).map(r=>r.key.replace('+','').replace(/_(lfo|past)$/,''))).size;
   const up = hy.tiers && hy.tiers.urgent_precision!=null ? Math.round(hy.tiers.urgent_precision*100)+'%' : '—';
   const tiles = [
     statTile('False-alarm episodes / hour', `${mlFmt(fx.false_alarm_episodes_per_h,0)} → ${mlFmt(hy.false_alarm_episodes_per_h,1)}`, 'fixed 3σ limit → ARK Predict v2', '--safe'),
     statTile('False-alarm rate', `${mlFmt(fx.far,0)}% → ${mlFmt(hy.far,0)}%`, 'share of normal seconds flagged', '--safe'),
-    statTile('F1 on real faults', `${mlFmt(fx.f1)} → ${mlFmt(hy.f1)}`, `v2 trained only on earlier experiments · best published (unsupervised): ${best.f1}`, '--accent'),
+    statTile(sk?'F1 on real faults':'F1 on forklift faults', `${mlFmt(fx.f1)} → ${mlFmt(hy.f1)}`, best?`v2 trained only on earlier experiments · best published (unsupervised): ${best.f1}`:'v2 trained only on earlier runs', '--accent'),
     statTile('Faults caught', `${hy.faults_caught}/${hy.faults}`, `median ${mlFmt(hy.median_delay_s,0)} s after onset`, '--accent'),
     statTile('URGENT alarms that were real', up, 'the rest of v2’s alarms go to MONITOR, not a pager', '--danger'),
     statTile('Never-seen fault types', hyl?mlFmt(hyl.f1):'—', `v2 F1 with that fault family left out of training · ${nModels} models compared`, '--warn'),
@@ -2419,11 +2470,12 @@ function renderMLLab(){
       <td class="mono">${mlFmt(r.false_alarm_episodes_per_h,1)}</td>
       <td class="mono" style="color:var(--text-dim)">${aucTxt}</td></tr>`;
   }).join('');
-  const expOpts = ['valve1','valve2','other'].map(g=>`<optgroup label="${g}">${d.experiments.filter(e=>e.startsWith(g+'/')).map(e=>`<option ${e===ML.exp?'selected':''}>${e}</option>`).join('')}</optgroup>`).join('');
+  const groups = [...new Set(d.experiments.map(e=>e.split('/')[0]))];
+  const expOpts = groups.map(g=>`<optgroup label="${g}">${d.experiments.filter(e=>e.startsWith(g+'/')).map(e=>`<option ${e===ML.exp?'selected':''}>${e}</option>`).join('')}</optgroup>`).join('');
   return head + `
     <div class="grid g-stats">${tiles}</div>
     <div class="panel" style="margin-top:14px">
-      <div class="panel-head"><div class="panel-title">Replay a real experiment<small>top: real sensor traces · red band = the fault as labelled by SKAB · bottom: when each system raised an alarm</small></div>
+      <div class="panel-head"><div class="panel-title">Replay ${sk?'a real experiment':'a forklift run'}<small>top: sensor traces · red band = the labelled fault · bottom: when each system raised an alarm</small></div>
         <select onchange="mlPick(this.value)">${expOpts}</select></div>
       <div id="ml-replay">${mlReplaySvg()}</div>
     </div>
@@ -2432,7 +2484,8 @@ function renderMLLab(){
         ${mlScatterSvg()}</div>
       <div class="panel">${panelHead('How we kept it honest')}
         <ul class="ml-list">
-          <li><b>Real data, official protocol.</b> First 400 s of each experiment train the model, the rest is test; metrics pooled over all 34 test sets — the published leaderboard's own predictions give exactly the published numbers through our metric code (unit-tested).</li>
+          ${sk?`<li><b>Real data, official protocol.</b> First 400 s of each experiment train the model, the rest is test; metrics pooled over all 34 test sets — the published leaderboard's own predictions give exactly the published numbers through our metric code (unit-tested).</li>`
+              :`<li><b>Same protocol as SKAB.</b> 40 forklift runs from our simulator, one injected fault each (ground truth); first 400 s train, the rest is test. Families (sensor / wear / load) play the role of SKAB's valve1 / valve2 / other.</li>`}
           <li><b>No peeking.</b> Settings for a fault family (valve1 / valve2 / other) are tuned only on the other two families.</li>
           <li><b>Causal.</b> Every score uses only the past, exactly like the live stream.</li>
           <li><b>Base rate.</b> ${Math.round(d.dataset.anomalous_share*100)}% of test seconds are faulty, so “alarm always” already scores F1 ${d.dataset.always_alarm_f1}. That is why we report false-alarm rate and false-alarm episodes next to F1.</li>
@@ -2443,10 +2496,10 @@ function renderMLLab(){
     <div class="panel" style="margin-top:14px">${panelHead('Every model on the same data', `${d.dataset.files} experiments · ${d.dataset.test_rows.toLocaleString()} test seconds · AUC = threshold-free ranking quality (raw inputs → drift-robust inputs)`)}
       <div class="table-wrap"><table class="ml-table"><tr><th>Model</th><th>Family</th><th>Setting</th><th>F1 ↑</th><th>FAR % ↓</th><th>MAR % ↓</th><th>Faults caught</th><th>False-alarm episodes/h ↓</th><th>AUC ↑</th></tr>${rows}</table></div>
     </div>
-    <div class="panel" style="margin-top:14px">${panelHead('Published SKAB leaderboard (same protocol)')}
+    ${d.leaderboard.length?`<div class="panel" style="margin-top:14px">${panelHead('Published SKAB leaderboard (same protocol)')}
       <div class="table-wrap"><table class="ml-table"><tr><th>Algorithm</th><th>F1</th><th>FAR %</th><th>MAR %</th></tr>
       ${d.leaderboard.map(r=>`<tr><td>${escapeHtml(r.label)}</td><td class="mono">${r.f1}</td><td class="mono">${r.far}</td><td class="mono">${r.mar}</td></tr>`).join('')}</table></div>
-    </div>`;
+    </div>`:''}`;
 }
 
 function mlScatterSvg(){
@@ -2497,7 +2550,7 @@ function mlReplaySvg(){
     const lo = Math.min(...v), hi = Math.max(...v), span = (hi-lo)||1;
     let path = '';
     for(let i=0;i<v.length;i+=1) path += (i?'L':'M') + X(i).toFixed(1) + ' ' + (y0+rowH-4-(v[i]-lo)/span*(rowH-8)).toFixed(1);
-    g += `<text x="${L-8}" y="${y0+rowH/2+4}" class="ml-lab" text-anchor="end">${escapeHtml(s.replace('RMS',''))}</text>
+    g += `<text x="${L-8}" y="${y0+rowH/2+4}" class="ml-lab" text-anchor="end">${escapeHtml(s.replace('RMS','').replace(/_/g,' '))}</text>
       <line x1="${L}" y1="${y0+rowH}" x2="${W-R}" y2="${y0+rowH}" class="ml-grid"/>
       <path d="${path}" fill="none" stroke="var(--accent)" stroke-width="1.2"/>`;
   });
