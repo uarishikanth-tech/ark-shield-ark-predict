@@ -117,31 +117,61 @@ async def report(_u=Depends(_viewer)):
 # ML Lab — results on the real SKAB dataset (precomputed by
 # `python -m app.services.anomaly.skab SKAB/data --export`)
 # ------------------------------------------------------------------
-_BENCH_PATH = Path(__file__).resolve().parent.parent / "services" / "anomaly" / "results" / "skab_results.json"
+_RESULTS = Path(__file__).resolve().parent.parent / "services" / "anomaly" / "results"
+_BENCH_FILES = {"skab": "skab_results.json", "forklift": "forklift_results.json"}
 _bench_cache: dict = {}
 
 
-def _bench() -> dict:
-    if "data" not in _bench_cache:
-        if not _BENCH_PATH.exists():
-            raise AppError("No benchmark results yet — run: python -m app.services.anomaly.skab SKAB/data --export", 404)
-        _bench_cache["data"] = json.loads(_BENCH_PATH.read_text())
-    return _bench_cache["data"]
+def _bench(dataset: str = "skab") -> dict:
+    if dataset not in _BENCH_FILES:
+        raise AppError(f"dataset must be one of {', '.join(_BENCH_FILES)}", 400)
+    if dataset not in _bench_cache:
+        path = _RESULTS / _BENCH_FILES[dataset]
+        if not path.exists():
+            raise AppError(f"No {dataset} benchmark results yet — run: python scripts/review3.py", 404)
+        _bench_cache[dataset] = json.loads(path.read_text())
+    return _bench_cache[dataset]
 
 
 @router.get("/benchmark")
-async def benchmark(_u=Depends(_viewer)):
-    """Model comparison on the real SKAB benchmark: every model, fixed-limit baseline, published leaderboard."""
-    return {k: v for k, v in _bench().items() if k != "replay"}
+async def benchmark(dataset: str = Query("skab", description="skab (real pump data) | forklift (labelled forklift runs)"),
+                    _u=Depends(_viewer)):
+    """Model comparison: every model vs the fixed-limit baseline (+ the published leaderboard for SKAB)."""
+    return {k: v for k, v in _bench(dataset).items() if k != "replay"}
 
 
 @router.get("/benchmark/replay")
-async def benchmark_replay(experiment: str = Query(..., description="e.g. valve1/3"), _u=Depends(_viewer)):
-    """One real SKAB experiment: sensor traces, the labelled fault, and when each system raised an alarm."""
-    rep = _bench().get("replay", {})
+async def benchmark_replay(experiment: str = Query(..., description="e.g. valve1/3"), dataset: str = Query("skab"),
+                           _u=Depends(_viewer)):
+    """One experiment: sensor traces, the labelled fault, and when each system raised an alarm."""
+    rep = _bench(dataset).get("replay", {})
     if experiment not in rep:
         raise AppError.not_found(f"Experiment {experiment}")
-    return {"experiment": experiment, **rep[experiment]}
+    return {"experiment": experiment, "dataset": dataset, **rep[experiment]}
+
+
+# ------------------------------------------------------------------
+# ARK Predict v2 — the supervised fault classifier
+# ------------------------------------------------------------------
+@router.get("/model")
+async def model_status(_u=Depends(_viewer)):
+    """The fault classifier: version, training data, accuracy on unseen runs, technician labels waiting."""
+    st = anomaly_service.model_status()
+    ev = _RESULTS / "fault_classifier_eval.json"
+    if ev.exists() and "evaluation" not in st:
+        st["evaluation"] = json.loads(ev.read_text())
+    return st
+
+
+@router.post("/model/retrain")
+async def model_retrain(_u=Depends(_operator)):
+    """Retrain the fault classifier on its simulator data + every technician-labelled window (about 30–60 s)."""
+    import asyncio
+
+    try:
+        return await asyncio.to_thread(anomaly_service.retrain_classifier)
+    except RuntimeError as e:
+        raise AppError(str(e), 409)
 
 
 # ------------------------------------------------------------------
@@ -162,6 +192,7 @@ class RateBody(CamelModel):
 class FeedbackBody(CamelModel):
     incident_id: int
     label: str   # right_call | too_high | too_low | false_alarm
+    fault_type: Optional[str] = None   # what it actually was (teaches the v2 fault classifier)
 
 
 class InjectBody(CamelModel):
@@ -213,7 +244,7 @@ async def feedback(body: FeedbackBody, _u=Depends(_operator)):
     if body.label not in LABELS:
         raise AppError(f"label must be one of {', '.join(LABELS)}", 400)
     try:
-        return anomaly_service.give_feedback(body.incident_id, body.label)
+        return anomaly_service.give_feedback(body.incident_id, body.label, body.fault_type)
     except KeyError:
         raise AppError.not_found("Incident")
 
