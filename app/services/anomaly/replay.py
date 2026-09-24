@@ -89,10 +89,11 @@ def load_csv(path: str, columns: list[str] | None = None):
 # one file through the pipeline
 # ----------------------------------------------------------------------
 def replay_array(names: list[str], X: np.ndarray, train_rows: int = 400, cfg: EngineConfig | None = None,
-                 use_ml: bool = True) -> dict:
+                 use_ml: bool = True, strict_train_rows: bool = False) -> dict:
     cfg = cfg or EngineConfig()
     n, k = X.shape
-    train_rows = min(train_rows, max(60, n // 3))
+    if not strict_train_rows:
+        train_rows = min(train_rows, max(60, n // 3))
     Xtr = X[:train_rows]
 
     specs, dets = [], []
